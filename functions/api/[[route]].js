@@ -162,7 +162,7 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ success: true }), { headers });
     }
 
-    // ─── 404 ───
+    // ─── 404 ───u
     return new Response(JSON.stringify({ error: 'Endpoint not found' }), { 
       status: 404, 
       headers 
