@@ -14,13 +14,13 @@
     
     <!-- HEADER -->
     <div class="bg-white rounded-lg shadow p-4 mb-6 flex justify-between items-center flex-wrap gap-2">
-      <h1 class="text-xl sm:text-2xl font-bold text-blue-800">Triage Emergency</h1>
+      <h1 class="text-xl sm:text-2xl font-bold text-blue-800">🏥 Triage Emergency</h1>
       <div class="flex gap-2">
         <button onclick="showLogin('doctor')" id="doctorBtn" class="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm whitespace-nowrap">
-          Médecin
+          👨‍⚕️ Médecin
         </button>
         <button onclick="showLogin('admin')" id="adminBtn" class="bg-gray-500 text-white px-3 py-2 rounded hover:bg-gray-600 text-sm whitespace-nowrap">
-          Admin
+          🔒 Admin
         </button>
       </div>
     </div>
@@ -31,9 +31,9 @@
       <button onclick="logout()" class="float-right text-sm text-red-600 hover:underline">Déconnexion</button>
     </div>
 
-    <!-- SIMULATOR (one block per configuration) -->
-    <div class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg sm:text-xl font-semibold mb-2">Simulateur de Triage</h2>
+    <!-- SIMULATOR (hidden on login) -->
+    <div id="simulatorSection" class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
+      <h2 class="text-lg sm:text-xl font-semibold mb-2">📋 Simulateur de Triage</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
         Remplissez les champs pour chaque solution indépendamment, puis cliquez sur
         <strong>Calculer</strong>. Chaque configuration sera évaluée séparément.
@@ -47,24 +47,24 @@
       <div id="ticketsContainer" class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
     </div>
 
-    <!-- CONFIG EDITOR (hidden) -->
+    <!-- CONFIG EDITOR (hidden by default) -->
     <div id="editorSection" class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 hidden">
       <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h2 class="text-lg sm:text-xl font-semibold">⚙️ Éditeur de Configuration</h2>
         <div class="flex gap-2 flex-wrap">
           <button onclick="addNewCategory()" class="bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 text-xs sm:text-sm">+ Catégorie</button>
           <button onclick="saveProposal()" id="saveProposalBtn" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-xs sm:text-sm hidden">
-             Proposer
+            💾 Proposer
           </button>
           <button onclick="resetConfig()" class="bg-gray-200 px-3 py-2 rounded hover:bg-gray-300 text-xs sm:text-sm">
-             Réinitialiser
+            🔄 Réinitialiser
           </button>
         </div>
       </div>
       <div id="configEditor"></div>
     </div>
 
-    <!-- ADMIN PROPOSALS LIST -->
+    <!-- ADMIN PROPOSALS LIST (hidden) -->
     <div id="adminProposalsSection" class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 hidden">
       <h2 class="text-lg sm:text-xl font-semibold mb-2">📨 Configurations Proposées</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
@@ -81,7 +81,7 @@
       <h3 id="loginTitle" class="text-lg font-bold mb-4"></h3>
       <input type="password" id="loginCodeInput" placeholder="Entrez votre code secret" 
              class="w-full border-2 rounded-lg px-4 py-2 mb-4 focus:border-blue-500" autocomplete="off">
-      <p id="loginError" class="text-red-500 text-sm mb-4 hidden"> Code incorrect.</p>
+      <p id="loginError" class="text-red-500 text-sm mb-4 hidden">❌ Code incorrect.</p>
       <div class="flex justify-end gap-2">
         <button onclick="closeLogin()" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">Annuler</button>
         <button onclick="submitLogin()" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">Valider</button>
@@ -92,14 +92,14 @@
   <script>
     const API_BASE = 'https://billowing-voice-4271.didcrist.workers.dev/api';
     
-    let activeConfig = null;       // first active config (used as template for editor)
+    let activeConfig = null;
     let originalConfig = null;
-    let allConfigs = [];           // all active + proposed
+    let allConfigs = [];
     let doctorCode = null;
     let adminCode = null;
     let loginMode = null;
 
-    // ─── Fetch the first active config (for editor) & all configs for simulator ───
+    // ─── Fetch first active config (template) & all configs (for simulator) ───
     async function loadActiveConfig() {
       try {
         const res = await fetch(API_BASE + '/config');
@@ -107,13 +107,12 @@
         const text = await res.text();
         activeConfig = JSON.parse(text);
         originalConfig = JSON.parse(text);
-        // After loading, also load all configs and render simulator
         await loadAllConfigs();
         if (doctorCode || adminCode) showEditor();
       } catch (e) {
         console.error(e);
         document.getElementById('configsList').innerHTML = 
-          '<p class="text-red-500 text-sm"> Impossible de charger les configurations.</p>';
+          '<p class="text-red-500 text-sm">❌ Impossible de charger les configurations.</p>';
       }
     }
 
@@ -139,7 +138,6 @@
       }
 
       allConfigs.forEach(cfg => {
-        // Parse json_data
         let cfgData;
         try {
           cfgData = typeof cfg.json_data === 'string' ? JSON.parse(cfg.json_data) : cfg.json_data;
@@ -161,7 +159,6 @@
         `;
 
         const optionsContainer = block.querySelector('.config-options');
-        // Build selects for each category in this config
         Object.entries(cfgData).forEach(([key, cat]) => {
           if (['thresholds','colors','levels'].includes(key)) return;
           const div = document.createElement('div');
@@ -182,12 +179,11 @@
       });
     }
 
-    // ─── Calculate all tickets ───
+    // ─── Calculate tickets ───
     async function calculateAllTickets() {
       const container = document.getElementById('ticketsContainer');
       container.innerHTML = '';
 
-      // Use the currently loaded allConfigs (they should be fresh)
       if (!allConfigs.length) return;
 
       allConfigs.forEach(cfg => {
@@ -195,19 +191,13 @@
         try {
           cfgData = typeof cfg.json_data === 'string' ? JSON.parse(cfg.json_data) : cfg.json_data;
         } catch (e) {
-          // Show error for this config
-          const card = document.createElement('div');
-          card.className = 'border rounded-lg p-4 bg-gray-50';
-          card.innerHTML = `<p class="text-sm text-red-500">Configuration ${cfg.name} invalide.</p>`;
-          container.appendChild(card);
+          container.innerHTML += `<p class="text-sm text-red-500">Configuration ${cfg.name} invalide.</p>`;
           return;
         }
 
-        // Get all selects for this config
         const selects = document.querySelectorAll(`select[data-config-id="${cfg.id}"]`);
         let total = 0;
         selects.forEach(sel => {
-          // If the category is present in cfgData, add the score
           const catKey = sel.dataset.category;
           if (cfgData[catKey] !== undefined) {
             total += parseInt(sel.value) || 0;
@@ -224,20 +214,20 @@
         const color = cfgData.colors[idx];
         const level = cfgData.levels[idx];
 
-        const ticketCard = document.createElement('div');
-        ticketCard.className = 'border-2 rounded-lg p-4 bg-gray-50';
+        const card = document.createElement('div');
+        card.className = 'border-2 rounded-lg p-4 bg-gray-50';
         const colorClass = {
           green: 'text-green-500', yellow: 'text-yellow-500', orange: 'text-orange-500', red: 'text-red-600'
         }[color] || 'text-gray-600';
-        ticketCard.innerHTML = `
-          <p class="text-xs text-gray-500 mb-1"> Ticket</p>
+        card.innerHTML = `
+          <p class="text-xs text-gray-500 mb-1">🎫 Ticket</p>
           <div class="text-4xl sm:text-5xl font-black ${colorClass}">■</div>
           <p class="text-lg sm:text-xl font-bold mt-1">${level}</p>
           <p class="text-sm text-gray-500">Score: ${total}</p>
           <p class="text-xs font-medium mt-1">${cfg.name}</p>
           <p class="text-xs text-gray-500">${cfg.doctor_code ? 'Médecin: ' + cfg.doctor_code : 'Administrateur'}</p>
         `;
-        container.appendChild(ticketCard);
+        container.appendChild(card);
       });
     }
 
@@ -390,7 +380,7 @@
       }
     }
 
-    // ─── LOGIN ───
+    // ─── LOGIN / LOGOUT ───
     function showLogin(mode) {
       loginMode = mode;
       document.getElementById('loginTitle').textContent = mode === 'doctor' ? '🔑 Code Médecin' : '🔒 Code Admin';
@@ -399,9 +389,11 @@
       document.getElementById('loginModal').classList.remove('hidden');
     }
     function closeLogin() { document.getElementById('loginModal').classList.add('hidden'); }
+
     async function submitLogin() {
       const code = document.getElementById('loginCodeInput').value.trim();
       if (!code) return;
+
       if (loginMode === 'doctor') {
         const res = await fetch(API_BASE + '/doctor/validate', {
           method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({code})
@@ -410,39 +402,50 @@
         if (data.valid) {
           doctorCode = code; adminCode = null;
           closeLogin();
+          // Hide simulator
+          document.getElementById('simulatorSection').classList.add('hidden');
           document.getElementById('statusBar').classList.remove('hidden');
-          document.getElementById('statusText').textContent = ' Médecin ' + (data.name||'');
+          document.getElementById('statusText').textContent = '✅ Médecin ' + (data.name||'');
           document.getElementById('statusBar').className = 'bg-blue-50 border border-blue-200 rounded p-3 mb-4';
           document.getElementById('saveProposalBtn').classList.remove('hidden');
-          document.getElementById('doctorBtn').textContent = ' Médecin ✓';
+          document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin ✓';
           document.getElementById('adminProposalsSection').classList.add('hidden');
           showEditor();
-        } else document.getElementById('loginError').classList.remove('hidden');
-      } else {
+        } else {
+          document.getElementById('loginError').classList.remove('hidden');
+        }
+      } else { // admin
         const res = await fetch(API_BASE + '/config/list', { headers: {'X-Admin-Code': code} });
         if (res.ok) {
           adminCode = code; doctorCode = null;
           closeLogin();
+          document.getElementById('simulatorSection').classList.add('hidden');
           document.getElementById('statusBar').classList.remove('hidden');
-          document.getElementById('statusText').textContent = ' Admin';
+          document.getElementById('statusText').textContent = '✅ Admin';
           document.getElementById('statusBar').className = 'bg-red-50 border border-red-200 rounded p-3 mb-4';
           document.getElementById('saveProposalBtn').classList.add('hidden');
-          document.getElementById('adminBtn').textContent = ' Admin ✓';
+          document.getElementById('adminBtn').textContent = '🔒 Admin ✓';
           showEditor();
           loadProposalsList();
-        } else document.getElementById('loginError').classList.remove('hidden');
+        } else {
+          document.getElementById('loginError').classList.remove('hidden');
+        }
       }
     }
+
     function logout() {
       doctorCode = null; adminCode = null;
+      // Show simulator again
+      document.getElementById('simulatorSection').classList.remove('hidden');
       document.getElementById('statusBar').classList.add('hidden');
       document.getElementById('editorSection').classList.add('hidden');
       document.getElementById('adminProposalsSection').classList.add('hidden');
       document.getElementById('saveProposalBtn').classList.add('hidden');
-      document.getElementById('doctorBtn').textContent = ' Médecin';
-      document.getElementById('adminBtn').textContent = ' Admin';
+      document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin';
+      document.getElementById('adminBtn').textContent = '🔒 Admin';
       document.getElementById('ticketsContainer').innerHTML = '';
-      // Re-render blocks without logged-in view if needed
+      // Reload simulator content
+      loadAllConfigs();
     }
 
     // ─── ADMIN LIST ───
