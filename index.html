@@ -86,8 +86,8 @@
   </div>
 
   <script>
-    // ⚠️ CHANGE THIS TO YOUR WORKER URL ⚠️
-    const API_BASE = 'https://billowing-voice-4271.didcrist.workers.dev';
+    // ⚠️ THIS MUST BE YOUR WORKER URL ⚠️
+    const API_BASE = 'https://billowing-voice-4271.didcrist.workers.dev/api';
     
     // ─── GLOBAL STATE ───
     let activeConfig = null;
@@ -99,261 +99,139 @@
     // ─── LOAD ACTIVE CONFIG ───
     async function loadActiveConfig() {
       try {
-        console.log('Loading config from:', API_BASE + '/config');
         const response = await fetch(API_BASE + '/config');
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-        
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const text = await response.text();
-        console.log('Config loaded successfully');
         activeConfig = JSON.parse(text);
         originalConfig = JSON.parse(text);
         renderSimulator();
-        
-        if (doctorCode || adminCode) {
-          showEditor();
-        }
-      } catch (error) {
-        console.error('Failed to load config:', error);
+        if (doctorCode || adminCode) showEditor();
+      } catch (e) {
+        console.error(e);
         document.getElementById('simulator').innerHTML = 
-          '<p class="text-red-500">❌ Impossible de charger la configuration. Vérifiez que le Worker est déployé et la base D1 est liée.</p>';
+          '<p class="text-red-500">❌ Impossible de charger la configuration. Vérifiez que le Worker est déployé et la base D1 liée.</p>';
       }
     }
 
     // ─── RENDER SIMULATOR ───
     function renderSimulator() {
-      if (!activeConfig) {
-        console.error('No active config to render');
-        return;
-      }
-      
+      if (!activeConfig) return;
       const container = document.getElementById('simulator');
       container.innerHTML = '';
-      
-      Object.entries(activeConfig).forEach(([key, category]) => {
-        if (['thresholds', 'colors', 'levels'].includes(key)) return;
-        
+      for (const [key, cat] of Object.entries(activeConfig)) {
+        if (['thresholds','colors','levels'].includes(key)) continue;
         const div = document.createElement('div');
         div.className = 'border rounded-lg p-3';
-        
-        const label = document.createElement('label');
-        label.className = 'block text-sm font-semibold mb-2 capitalize text-gray-700';
-        label.textContent = key.replace(/_/g, ' ');
-        div.appendChild(label);
-        
+        div.innerHTML = `<label class="block text-sm font-semibold mb-2 capitalize text-gray-700">${key.replace(/_/g,' ')}</label>`;
         const select = document.createElement('select');
-        select.className = 'w-full border rounded px-3 py-2 text-sm focus:border-blue-500 bg-white';
+        select.className = 'w-full border rounded px-3 py-2 text-sm bg-white';
         select.dataset.category = key;
-        
-        category.options.forEach((option, index) => {
-          const opt = document.createElement('option');
-          opt.value = category.scores[index];
-          opt.textContent = `${option} (${category.scores[index]} pts)`;
-          select.appendChild(opt);
+        cat.options.forEach((opt, i) => {
+          select.innerHTML += `<option value="${cat.scores[i]}">${opt} (${cat.scores[i]})</option>`;
         });
-        
         div.appendChild(select);
         container.appendChild(div);
-      });
+      }
     }
 
-    // ─── CALCULATE TRIAGE ───
+    // ─── CALCULATE ───
     function calculateTriage() {
-      if (!activeConfig) return;
-      
-      let totalScore = 0;
-      document.querySelectorAll('#simulator select').forEach(select => {
-        totalScore += parseInt(select.value) || 0;
-      });
-      
-      const [greenMax, yellowMax, orangeMax] = activeConfig.thresholds;
-      let levelIndex = 0;
-      
-      if (totalScore <= greenMax) levelIndex = 0;
-      else if (totalScore <= yellowMax) levelIndex = 1;
-      else if (totalScore <= orangeMax) levelIndex = 2;
-      else levelIndex = 3;
-      
-      const color = activeConfig.colors[levelIndex];
-      const level = activeConfig.levels[levelIndex];
-      
+      let total = 0;
+      document.querySelectorAll('#simulator select').forEach(s => total += +s.value);
+      const [gmax, ymax, omax] = activeConfig.thresholds;
+      let idx = 0;
+      if (total <= gmax) idx = 0;
+      else if (total <= ymax) idx = 1;
+      else if (total <= omax) idx = 2;
+      else idx = 3;
+      const color = activeConfig.colors[idx];
       const ticketColor = document.getElementById('ticketColor');
       ticketColor.textContent = '■';
-      
-      const colorClasses = {
-        green: 'text-green-500',
-        yellow: 'text-yellow-500',
-        orange: 'text-orange-500',
-        red: 'text-red-600'
-      };
-      
-      ticketColor.className = 'text-5xl font-black ' + (colorClasses[color] || 'text-gray-600');
-      document.getElementById('ticketLevel').textContent = level;
-      document.getElementById('ticketScore').textContent = `Score: ${totalScore} pts`;
+      ticketColor.className = 'text-5xl font-black ' + ({
+        green:'text-green-500', yellow:'text-yellow-500', orange:'text-orange-500', red:'text-red-600'
+      })[color] || 'text-gray-600';
+      document.getElementById('ticketLevel').textContent = activeConfig.levels[idx];
+      document.getElementById('ticketScore').textContent = `Score : ${total}`;
     }
 
-    // ─── SHOW CONFIG EDITOR ───
+    // ─── EDITOR ───
     function showEditor() {
       document.getElementById('editorSection').classList.remove('hidden');
       const editor = document.getElementById('configEditor');
       editor.innerHTML = '';
-      
-      Object.entries(activeConfig).forEach(([key, category]) => {
-        if (['thresholds', 'colors', 'levels'].includes(key)) return;
-        
+      for (const [key, cat] of Object.entries(activeConfig)) {
+        if (['thresholds','colors','levels'].includes(key)) continue;
         const card = document.createElement('div');
         card.className = 'border rounded-lg p-4 mb-4';
-        card.innerHTML = `<h3 class="font-semibold mb-3 capitalize">${key.replace(/_/g, ' ')}</h3>`;
-        
+        card.innerHTML = `<h3 class="font-semibold mb-3 capitalize">${key.replace(/_/g,' ')}</h3>`;
         const table = document.createElement('table');
         table.className = 'w-full text-sm';
-        table.innerHTML = `
-          <thead>
-            <tr class="bg-gray-50">
-              <th class="text-left p-1">Option</th>
-              <th class="text-left p-1 w-24">Score</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        `;
-        
+        table.innerHTML = '<thead><tr class="bg-gray-50"><th class="text-left p-1">Option</th><th class="text-left p-1 w-24">Score</th></tr></thead><tbody></tbody>';
         const tbody = table.querySelector('tbody');
-        category.options.forEach((option, index) => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td class="p-1">
-              <input type="text" value="${option.replace(/"/g, '&quot;')}" 
-                     data-category="${key}" data-index="${index}" data-field="option"
-                     class="w-full border rounded px-2 py-1 text-sm">
-            </td>
-            <td class="p-1">
-              <input type="number" value="${category.scores[index]}" 
-                     data-category="${key}" data-index="${index}" data-field="score"
-                     class="w-20 border rounded px-2 py-1 text-sm">
-            </td>
-          `;
-          tbody.appendChild(row);
+        cat.options.forEach((opt, i) => {
+          tbody.innerHTML += `<tr>
+            <td class="p-1"><input type="text" value="${opt.replace(/"/g,'&quot;')}" data-cat="${key}" data-idx="${i}" data-field="option" class="w-full border rounded px-2 py-1 text-sm"></td>
+            <td class="p-1"><input type="number" value="${cat.scores[i]}" data-cat="${key}" data-idx="${i}" data-field="score" class="w-20 border rounded px-2 py-1 text-sm"></td>
+          </tr>`;
         });
-        
         card.appendChild(table);
-        
         const addBtn = document.createElement('button');
         addBtn.textContent = '+ Ajouter une option';
         addBtn.className = 'text-blue-600 text-sm mt-2 hover:underline';
-        addBtn.onclick = () => {
-          category.options.push('Nouvelle option');
-          category.scores.push(0);
-          showEditor();
-        };
+        addBtn.onclick = () => { cat.options.push('Nouveau'); cat.scores.push(0); showEditor(); };
         card.appendChild(addBtn);
-        
         editor.appendChild(card);
-      });
-      
-      // Edit thresholds
-      editor.innerHTML += `
-        <div class="border rounded-lg p-4 mb-4">
-          <h3 class="font-semibold mb-3">Seuils de Triage</h3>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label class="text-xs">Vert (score maximum)</label>
-              <input type="number" id="threshold0" value="${activeConfig.thresholds[0]}" 
-                     class="w-full border rounded px-2 py-1 text-sm">
-            </div>
-            <div>
-              <label class="text-xs">Jaune (score maximum)</label>
-              <input type="number" id="threshold1" value="${activeConfig.thresholds[1]}" 
-                     class="w-full border rounded px-2 py-1 text-sm">
-            </div>
-            <div>
-              <label class="text-xs">Orange (score maximum)</label>
-              <input type="number" id="threshold2" value="${activeConfig.thresholds[2]}" 
-                     class="w-full border rounded px-2 py-1 text-sm">
-            </div>
-          </div>
+      }
+
+      // Thresholds
+      editor.innerHTML += `<div class="border rounded-lg p-4 mb-4">
+        <h3 class="font-semibold mb-3">Seuils de Triage</h3>
+        <div class="grid grid-cols-3 gap-4">
+          <div><label class="text-xs">Vert max</label><input type="number" id="threshold0" value="${activeConfig.thresholds[0]}" class="w-full border rounded px-2 py-1"></div>
+          <div><label class="text-xs">Jaune max</label><input type="number" id="threshold1" value="${activeConfig.thresholds[1]}" class="w-full border rounded px-2 py-1"></div>
+          <div><label class="text-xs">Orange max</label><input type="number" id="threshold2" value="${activeConfig.thresholds[2]}" class="w-full border rounded px-2 py-1"></div>
         </div>
-        
-        <div class="border rounded-lg p-4 mb-4">
-          <h3 class="font-semibold mb-3">Couleurs et Niveaux</h3>
-          <div class="grid grid-cols-2 gap-3">
-            ${[0,1,2,3].map(i => `
-              <div>
-                <label class="text-xs">Couleur ${i+1}</label>
-                <input type="text" id="color${i}" value="${activeConfig.colors[i]}" 
-                       class="w-full border rounded px-2 py-1 text-sm">
-              </div>
-              <div>
-                <label class="text-xs">Niveau ${i+1}</label>
-                <input type="text" id="level${i}" value="${activeConfig.levels[i]}" 
-                       class="w-full border rounded px-2 py-1 text-sm">
-              </div>
-            `).join('')}
-          </div>
+      </div>`;
+
+      // Colors & levels
+      editor.innerHTML += `<div class="border rounded-lg p-4 mb-4">
+        <h3 class="font-semibold mb-3">Couleurs & Niveaux</h3>
+        <div class="grid grid-cols-2 gap-2">
+          ${[0,1,2,3].map(i => `
+            <div><label class="text-xs">Couleur</label><input type="text" id="color${i}" value="${activeConfig.colors[i]}" class="w-full border rounded px-2 py-1"></div>
+            <div><label class="text-xs">Niveau</label><input type="text" id="level${i}" value="${activeConfig.levels[i]}" class="w-full border rounded px-2 py-1"></div>
+          `).join('')}
         </div>
-      `;
-      
-      // Attach change listeners
-      editor.querySelectorAll('input').forEach(input => {
-        input.addEventListener('change', () => {
-          if (input.dataset.category && input.dataset.field === 'option') {
-            activeConfig[input.dataset.category].options[parseInt(input.dataset.index)] = input.value;
-          } else if (input.dataset.category && input.dataset.field === 'score') {
-            activeConfig[input.dataset.category].scores[parseInt(input.dataset.index)] = parseInt(input.value) || 0;
-          } else if (input.id.startsWith('threshold')) {
-            activeConfig.thresholds[parseInt(input.id.replace('threshold', ''))] = parseInt(input.value) || 0;
-          } else if (input.id.startsWith('color')) {
-            activeConfig.colors[parseInt(input.id.replace('color', ''))] = input.value;
-          } else if (input.id.startsWith('level')) {
-            activeConfig.levels[parseInt(input.id.replace('level', ''))] = input.value;
-          }
-        });
-      });
+      </div>`;
+
+      // Attach listeners
+      editor.querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => {
+        const cat = inp.dataset.cat, idx = +inp.dataset.idx, field = inp.dataset.field;
+        if (cat && field === 'option') activeConfig[cat].options[idx] = inp.value;
+        else if (cat && field === 'score') activeConfig[cat].scores[idx] = +inp.value || 0;
+        else if (inp.id.startsWith('threshold')) activeConfig.thresholds[+inp.id.replace('threshold','')] = +inp.value || 0;
+        else if (inp.id.startsWith('color')) activeConfig.colors[+inp.id.replace('color','')] = inp.value;
+        else if (inp.id.startsWith('level')) activeConfig.levels[+inp.id.replace('level','')] = inp.value;
+      }));
     }
 
-    // ─── SAVE PROPOSAL ───
+    // ─── PROPOSE ───
     async function saveProposal() {
-      if (!doctorCode) {
-        alert('Connectez-vous en tant que médecin pour proposer une configuration.');
-        return;
-      }
-      
-      const name = prompt('Nom de votre configuration :');
+      if (!doctorCode) return alert('Connectez-vous en tant que médecin.');
+      const name = prompt('Nom de la configuration :');
       if (!name) return;
-      
       const description = prompt('Description (optionnelle) :');
-      
-      try {
-        const response = await fetch(API_BASE + '/config/propose', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Doctor-Code': doctorCode
-          },
-          body: JSON.stringify({
-            name: name,
-            description: description || '',
-            json_data: activeConfig
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          alert('✅ Configuration proposée avec succès (ID: ' + data.id + ')');
-        } else {
-          const error = await response.json();
-          alert('❌ Erreur: ' + error.error);
-        }
-      } catch (error) {
-        alert('❌ Erreur réseau: ' + error.message);
-      }
+      const res = await fetch(API_BASE + '/config/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Doctor-Code': doctorCode },
+        body: JSON.stringify({ name, description, json_data: activeConfig })
+      });
+      if (res.ok) alert('✅ Proposition envoyée !');
+      else alert('❌ Erreur');
     }
 
-    // ─── RESET CONFIG ───
     function resetConfig() {
-      if (confirm('Réinitialiser tous les changements ?')) {
+      if (confirm('Réinitialiser les changements ?')) {
         activeConfig = JSON.parse(JSON.stringify(originalConfig));
         showEditor();
       }
@@ -362,87 +240,49 @@
     // ─── LOGIN ───
     function showLogin(mode) {
       loginMode = mode;
-      document.getElementById('loginTitle').textContent = 
-        mode === 'doctor' ? '🔑 Code Médecin' : '🔒 Code Administrateur';
+      document.getElementById('loginTitle').textContent = mode === 'doctor' ? '🔑 Code Médecin' : '🔒 Code Admin';
       document.getElementById('loginCodeInput').value = '';
       document.getElementById('loginError').classList.add('hidden');
       document.getElementById('loginModal').classList.remove('hidden');
     }
-
-    function closeLogin() {
-      document.getElementById('loginModal').classList.add('hidden');
-    }
-
+    function closeLogin() { document.getElementById('loginModal').classList.add('hidden'); }
     async function submitLogin() {
       const code = document.getElementById('loginCodeInput').value.trim();
-      
-      if (!code) {
-        document.getElementById('loginError').textContent = 'Veuillez entrer un code.';
-        document.getElementById('loginError').classList.remove('hidden');
-        return;
-      }
-      
+      if (!code) return;
       if (loginMode === 'doctor') {
-        try {
-          const response = await fetch(API_BASE + '/doctor/validate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: code })
-          });
-          
-          const data = await response.json();
-          
-          if (data.valid) {
-            doctorCode = code;
-            adminCode = null;
-            closeLogin();
-            document.getElementById('statusBar').classList.remove('hidden');
-            document.getElementById('statusText').textContent = 
-              `✅ Connecté en tant que médecin${data.name ? ' : ' + data.name : ''}`;
-            document.getElementById('statusBar').className = 'bg-blue-50 border border-blue-200 rounded p-3 mb-6';
-            document.getElementById('saveProposalBtn').classList.remove('hidden');
-            document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin ✓';
-            document.getElementById('adminProposalsSection').classList.add('hidden');
-            showEditor();
-          } else {
-            document.getElementById('loginError').classList.remove('hidden');
-          }
-        } catch (error) {
-          console.error('Login error:', error);
-          document.getElementById('loginError').textContent = 'Erreur de connexion. Vérifiez votre Worker.';
-          document.getElementById('loginError').classList.remove('hidden');
-        }
-      } else if (loginMode === 'admin') {
-        try {
-          const response = await fetch(API_BASE + '/config/list', {
-            headers: { 'X-Admin-Code': code }
-          });
-          
-          if (response.ok) {
-            adminCode = code;
-            doctorCode = null;
-            closeLogin();
-            document.getElementById('statusBar').classList.remove('hidden');
-            document.getElementById('statusText').textContent = '✅ Connecté en tant qu\'administrateur';
-            document.getElementById('statusBar').className = 'bg-red-50 border border-red-200 rounded p-3 mb-6';
-            document.getElementById('saveProposalBtn').classList.add('hidden');
-            document.getElementById('adminBtn').textContent = '🔒 Admin ✓';
-            showEditor();
-            loadProposalsList();
-          } else {
-            document.getElementById('loginError').classList.remove('hidden');
-          }
-        } catch (error) {
-          console.error('Admin login error:', error);
-          document.getElementById('loginError').textContent = 'Erreur de connexion.';
-          document.getElementById('loginError').classList.remove('hidden');
-        }
+        const res = await fetch(API_BASE + '/doctor/validate', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({code})
+        });
+        const data = await res.json();
+        if (data.valid) {
+          doctorCode = code; adminCode = null;
+          closeLogin();
+          document.getElementById('statusBar').classList.remove('hidden');
+          document.getElementById('statusText').textContent = '✅ Médecin ' + (data.name||'');
+          document.getElementById('statusBar').className = 'bg-blue-50 border border-blue-200 rounded p-3 mb-6';
+          document.getElementById('saveProposalBtn').classList.remove('hidden');
+          document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin ✓';
+          document.getElementById('adminProposalsSection').classList.add('hidden');
+          showEditor();
+        } else document.getElementById('loginError').classList.remove('hidden');
+      } else {
+        // Admin login: test by fetching config list
+        const res = await fetch(API_BASE + '/config/list', { headers: {'X-Admin-Code': code} });
+        if (res.ok) {
+          adminCode = code; doctorCode = null;
+          closeLogin();
+          document.getElementById('statusBar').classList.remove('hidden');
+          document.getElementById('statusText').textContent = '✅ Admin';
+          document.getElementById('statusBar').className = 'bg-red-50 border border-red-200 rounded p-3 mb-6';
+          document.getElementById('saveProposalBtn').classList.add('hidden');
+          document.getElementById('adminBtn').textContent = '🔒 Admin ✓';
+          showEditor();
+          loadProposalsList();
+        } else document.getElementById('loginError').classList.remove('hidden');
       }
     }
-
     function logout() {
-      doctorCode = null;
-      adminCode = null;
+      doctorCode = null; adminCode = null;
       document.getElementById('statusBar').classList.add('hidden');
       document.getElementById('editorSection').classList.add('hidden');
       document.getElementById('adminProposalsSection').classList.add('hidden');
@@ -451,84 +291,39 @@
       document.getElementById('adminBtn').textContent = '🔒 Admin';
     }
 
-    // ─── ADMIN: LOAD PROPOSALS ───
+    // ─── ADMIN PROPOSALS ───
     async function loadProposalsList() {
       if (!adminCode) return;
-      
-      try {
-        const response = await fetch(API_BASE + '/config/list', {
-          headers: { 'X-Admin-Code': adminCode }
-        });
-        
-        const configs = await response.json();
-        const container = document.getElementById('proposalsList');
-        container.innerHTML = '';
-        
-        document.getElementById('adminProposalsSection').classList.remove('hidden');
-        
-        if (configs.length === 0) {
-          container.innerHTML = '<p class="text-gray-500">Aucune proposition pour le moment.</p>';
-          return;
-        }
-        
-        configs.forEach(config => {
-          const div = document.createElement('div');
-          div.className = 'border rounded-lg p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2';
-          div.innerHTML = `
-            <div>
-              <p class="font-semibold">${config.name}</p>
-              <p class="text-sm text-gray-600">${config.description || 'Pas de description'}</p>
-              <p class="text-xs text-gray-500">
-                Status: <span class="font-semibold">${config.status}</span>
-                ${config.doctor_code ? ` | Médecin: ${config.doctor_code}` : ''}
-                ${config.doctor_name ? ` (${config.doctor_name})` : ''}
-              </p>
-            </div>
-            ${config.status !== 'active' ? 
-              `<button onclick="activateConfig(${config.id})" 
-                       class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 whitespace-nowrap">
-                ✅ Activer
-              </button>` : 
-              '<span class="text-green-600 font-semibold whitespace-nowrap">✓ Actif</span>'
-            }
-          `;
-          container.appendChild(div);
-        });
-      } catch (error) {
-        console.error('Failed to load proposals:', error);
-      }
+      const res = await fetch(API_BASE + '/config/list', { headers: {'X-Admin-Code': adminCode} });
+      const configs = await res.json();
+      const container = document.getElementById('proposalsList');
+      container.innerHTML = '';
+      document.getElementById('adminProposalsSection').classList.remove('hidden');
+      if (configs.length === 0) container.innerHTML = '<p class="text-gray-500">Aucune proposition.</p>';
+      configs.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'border rounded-lg p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2';
+        div.innerHTML = `<div>
+          <p class="font-semibold">${c.name}</p><p class="text-sm text-gray-600">${c.description||''}</p>
+          <p class="text-xs text-gray-500">Status: ${c.status} ${c.doctor_code ? ' | Médecin: '+c.doctor_code : ''}</p>
+        </div>
+        ${c.status !== 'active' ? `<button onclick="activateConfig(${c.id})" class="bg-green-600 text-white px-4 py-2 rounded text-sm">✅ Activer</button>` : '<span class="text-green-600 font-semibold">✓ Actif</span>'}`;
+        container.appendChild(div);
+      });
     }
 
-    // ─── ACTIVATE CONFIG ───
-    window.activateConfig = async function(id) {
-      if (!adminCode) return;
-      
-      if (!confirm('Activer cette configuration ? Elle deviendra la configuration active.')) return;
-      
-      try {
-        const response = await fetch(API_BASE + '/config/activate', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Code': adminCode
-          },
-          body: JSON.stringify({ id: id })
-        });
-        
-        if (response.ok) {
-          alert('✅ Configuration activée avec succès !');
-          await loadActiveConfig();
-          await loadProposalsList();
-        } else {
-          const error = await response.json();
-          alert('❌ Erreur: ' + error.error);
-        }
-      } catch (error) {
-        alert('❌ Erreur réseau lors de l\'activation');
-      }
+    window.activateConfig = async (id) => {
+      if (!adminCode || !confirm('Activer cette configuration ?')) return;
+      await fetch(API_BASE + '/config/activate', {
+        method: 'PUT', headers: {'Content-Type':'application/json','X-Admin-Code': adminCode},
+        body: JSON.stringify({id})
+      });
+      alert('✅ Activée !');
+      await loadActiveConfig();
+      loadProposalsList();
     };
 
-    // ─── INIT ───
+    // Start
     loadActiveConfig();
   </script>
 </body>
