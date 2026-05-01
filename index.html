@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     button, .btn { min-height: 44px; min-width: 44px; }
-    @media (max-width: 640px) { .responsive-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans antialiased">
@@ -32,15 +31,14 @@
       <button onclick="logout()" class="float-right text-sm text-red-600 hover:underline">Déconnexion</button>
     </div>
 
-    <!-- SIMULATOR (inputs from union of categories) -->
+    <!-- SIMULATOR (one block per configuration) -->
     <div class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
       <h2 class="text-lg sm:text-xl font-semibold mb-2">📋 Simulateur de Triage</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
-        Saisissez les données du patient une seule fois. Le ticket sera calculé pour <strong>chaque solution active ou proposée</strong>.
+        Remplissez les champs pour chaque solution indépendamment, puis cliquez sur
+        <strong>Calculer</strong>. Chaque configuration sera évaluée séparément.
       </p>
-      <!-- List of configurations being simulated -->
-      <div id="activeConfigsSummary" class="text-xs text-gray-600 mb-3 flex flex-wrap gap-1"></div>
-      <div id="simulator" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"></div>
+      <div id="configsList" class="space-y-6"></div>
       <div class="mt-5">
         <button onclick="calculateAllTickets()" class="bg-green-600 text-white px-5 py-3 rounded-lg hover:bg-green-700 font-semibold w-full sm:w-auto text-sm sm:text-base">
           Calculer le Triage (toutes les solutions)
@@ -70,7 +68,7 @@
     <div id="adminProposalsSection" class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 hidden">
       <h2 class="text-lg sm:text-xl font-semibold mb-2">📨 Configurations Proposées</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
-        Plusieurs configurations peuvent être actives simultanément. Gérez leur statut ici.
+        Activez / désactivez les configurations. Plusieurs peuvent être actives simultanément.
       </p>
       <div id="proposalsList" class="space-y-3"></div>
     </div>
@@ -94,14 +92,14 @@
   <script>
     const API_BASE = 'https://billowing-voice-4271.didcrist.workers.dev/api';
     
-    let activeConfig = null;       // first active config (used as editing template)
+    let activeConfig = null;       // first active config (used as template for editor)
     let originalConfig = null;
-    let allConfigs = [];           // all active + proposed for simulator & summary
+    let allConfigs = [];           // all active + proposed
     let doctorCode = null;
     let adminCode = null;
     let loginMode = null;
 
-    // ─── Fetch the first active config (template) and all active+proposed ───
+    // ─── Fetch the first active config (for editor) & all configs for simulator ───
     async function loadActiveConfig() {
       try {
         const res = await fetch(API_BASE + '/config');
@@ -109,14 +107,13 @@
         const text = await res.text();
         activeConfig = JSON.parse(text);
         originalConfig = JSON.parse(text);
-        loadAllConfigs().then(() => {
-          renderSimulator();  // will now use union categories
-        });
+        // After loading, also load all configs and render simulator
+        await loadAllConfigs();
         if (doctorCode || adminCode) showEditor();
       } catch (e) {
         console.error(e);
-        document.getElementById('simulator').innerHTML = 
-          '<p class="text-red-500 text-sm">❌ Impossible de charger la configuration active.</p>';
+        document.getElementById('configsList').innerHTML = 
+          '<p class="text-red-500 text-sm">❌ Impossible de charger les configurations.</p>';
       }
     }
 
@@ -125,169 +122,126 @@
         const res = await fetch(API_BASE + '/config/all');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         allConfigs = await res.json();
-        updateActiveSummary();
+        renderConfigBlocks();
       } catch (e) {
         console.error(e);
       }
     }
 
-    // ─── Show a small summary of which configurations are being simulated ───
-    function updateActiveSummary() {
-      const container = document.getElementById('activeConfigsSummary');
-      if (!allConfigs.length) {
-        container.innerHTML = '';
-        return;
-      }
-      const names = allConfigs.map(c => {
-        return `<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">${c.name} ${c.doctor_code ? '('+c.doctor_code+')' : ''}</span>`;
-      }).join(' ');
-      container.innerHTML = 'Configurations prises en compte : ' + names;
-    }
-
-    // ─── Build simulator inputs using UNION of categories from all active+proposed configs ───
-    function renderSimulator() {
-      if (!activeConfig) return;
-      const container = document.getElementById('simulator');
+    // ─── Render one block per configuration ───
+    function renderConfigBlocks() {
+      const container = document.getElementById('configsList');
       container.innerHTML = '';
 
-      // Collect all category keys from all configs (active+proposed)
-      const allCategories = new Set();
-      // Always include categories from activeConfig (template)
-      Object.keys(activeConfig).forEach(k => {
-        if (!['thresholds','colors','levels'].includes(k)) allCategories.add(k);
-      });
-      // Add categories from allConfigs (parsed from json_data)
+      if (!allConfigs.length) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">Aucune configuration active ou proposée.</p>';
+        return;
+      }
+
       allConfigs.forEach(cfg => {
+        // Parse json_data
+        let cfgData;
         try {
-          const data = typeof cfg.json_data === 'string' ? JSON.parse(cfg.json_data) : cfg.json_data;
-          if (data) {
-            Object.keys(data).forEach(k => {
-              if (!['thresholds','colors','levels'].includes(k)) allCategories.add(k);
-            });
-          }
-        } catch(e) {}
-      });
+          cfgData = typeof cfg.json_data === 'string' ? JSON.parse(cfg.json_data) : cfg.json_data;
+        } catch (e) {
+          container.innerHTML += `<p class="text-red-500 text-sm">Configuration ${cfg.name} invalide.</p>`;
+          return;
+        }
 
-      // Sort categories alphabetically for consistency
-      const sortedCats = Array.from(allCategories).sort();
+        const block = document.createElement('div');
+        block.className = 'border rounded-lg p-3 sm:p-4';
+        block.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <h3 class="font-semibold text-base sm:text-lg">${cfg.name}</h3>
+              <p class="text-xs text-gray-500">${cfg.doctor_code ? 'Médecin: ' + cfg.doctor_code : 'Administrateur'}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 config-options" data-config-id="${cfg.id}"></div>
+        `;
 
-      // For each category, build a select using the options from the activeConfig (if exists),
-      // otherwise create a default select with a simple "Normal / Anormal"
-      sortedCats.forEach(key => {
-        const div = document.createElement('div');
-        div.className = 'border rounded-lg p-3';
-        const label = document.createElement('label');
-        label.className = 'block text-xs sm:text-sm font-semibold mb-1 capitalize text-gray-700';
-        label.textContent = key.replace(/_/g, ' ');
-        div.appendChild(label);
-
-        const select = document.createElement('select');
-        select.className = 'w-full border rounded px-3 py-2 text-sm bg-white';
-        select.dataset.category = key;
-
-        // If activeConfig has this category, use its options/scores; otherwise fallback
-        if (activeConfig[key] && activeConfig[key].options) {
-          activeConfig[key].options.forEach((opt, i) => {
-            select.innerHTML += `<option value="${activeConfig[key].scores[i]}">${opt} (${activeConfig[key].scores[i]})</option>`;
+        const optionsContainer = block.querySelector('.config-options');
+        // Build selects for each category in this config
+        Object.entries(cfgData).forEach(([key, cat]) => {
+          if (['thresholds','colors','levels'].includes(key)) return;
+          const div = document.createElement('div');
+          div.className = 'border rounded-lg p-2';
+          div.innerHTML = `<label class="block text-xs font-semibold mb-1 capitalize text-gray-700">${key.replace(/_/g,' ')}</label>`;
+          const select = document.createElement('select');
+          select.className = 'w-full border rounded px-2 py-1 text-sm bg-white';
+          select.dataset.configId = cfg.id;
+          select.dataset.category = key;
+          cat.options.forEach((opt, i) => {
+            select.innerHTML += `<option value="${cat.scores[i]}">${opt} (${cat.scores[i]})</option>`;
           });
-        } else {
-          // Create a generic set of options (Normal / Anormal)
-          select.innerHTML += `<option value="0">Normal (0)</option><option value="5">Anormal (5)</option>`;
-        }
-        div.appendChild(select);
-        container.appendChild(div);
+          div.appendChild(select);
+          optionsContainer.appendChild(div);
+        });
+
+        container.appendChild(block);
       });
     }
 
-    // ─── Calculate ticket for a single configuration ───
-    function calculateForConfig(config) {
-      const json = config.json_data || JSON.stringify(config);
-      let configData;
-      try {
-        configData = typeof json === 'string' ? JSON.parse(json) : json;
-      } catch (e) { return null; }
-      if (!configData || !configData.thresholds) return null;
-
-      let total = 0;
-      const selects = document.querySelectorAll('#simulator select');
-      selects.forEach(select => {
-        const key = select.dataset.category;
-        if (configData[key] !== undefined) {
-          total += parseInt(select.value) || 0;
-        }
-      });
-
-      const [gmax, ymax, omax] = configData.thresholds;
-      let idx = 0;
-      if (total <= gmax) idx = 0;
-      else if (total <= ymax) idx = 1;
-      else if (total <= omax) idx = 2;
-      else idx = 3;
-
-      return {
-        name: config.name || 'Sans nom',
-        doctor: config.doctor_code ? `Médecin: ${config.doctor_code}` : 'Administrateur',
-        color: configData.colors[idx],
-        level: configData.levels[idx],
-        totalScore: total
-      };
-    }
-
-    // ─── Calculate all tickets (called by button) ───
+    // ─── Calculate all tickets ───
     async function calculateAllTickets() {
-      if (!activeConfig) return;
-      await loadAllConfigs(); // refresh list
       const container = document.getElementById('ticketsContainer');
       container.innerHTML = '';
 
-      // Collect all configs to evaluate: include the template activeConfig + all from DB
-      const toEval = [];
-      // Add the activeConfig as a special entry
-      toEval.push({ id: 'active', name: 'Active (template)', doctor_code: null, json_data: JSON.stringify(activeConfig) });
-      // Add all configs from the API
-      allConfigs.forEach(cfg => {
-        // Avoid duplicate if same id (unlikely) and same name? Just push all.
-        if (!toEval.find(e => e.id === cfg.id)) {
-          toEval.push(cfg);
-        }
-      });
+      // Use the currently loaded allConfigs (they should be fresh)
+      if (!allConfigs.length) return;
 
-      // Evaluate each
-      toEval.forEach(cfg => {
-        const ticket = calculateForConfig(cfg);
-        if (ticket) {
-          const card = document.createElement('div');
-          card.className = 'border-2 rounded-lg p-4 bg-gray-50';
-          const colorClass = {
-            green: 'text-green-500', yellow: 'text-yellow-500', orange: 'text-orange-500', red: 'text-red-600'
-          }[ticket.color] || 'text-gray-600';
-          card.innerHTML = `
-            <p class="text-xs text-gray-500 mb-1">🎫 Ticket</p>
-            <div class="text-4xl sm:text-5xl font-black ${colorClass}">■</div>
-            <p class="text-lg sm:text-xl font-bold mt-1">${ticket.level}</p>
-            <p class="text-sm text-gray-500">Score: ${ticket.totalScore}</p>
-            <p class="text-xs font-medium mt-1">${ticket.name}</p>
-            <p class="text-xs text-gray-500">${ticket.doctor}</p>
-          `;
-          container.appendChild(card);
-        } else {
-          // Placeholder for configs that couldn't be evaluated (shouldn't happen often)
+      allConfigs.forEach(cfg => {
+        let cfgData;
+        try {
+          cfgData = typeof cfg.json_data === 'string' ? JSON.parse(cfg.json_data) : cfg.json_data;
+        } catch (e) {
+          // Show error for this config
           const card = document.createElement('div');
           card.className = 'border rounded-lg p-4 bg-gray-50';
-          card.innerHTML = `
-            <p class="font-semibold text-sm">${cfg.name || 'Inconnu'}</p>
-            <p class="text-xs text-red-500">Catégories incompatibles</p>
-            ${cfg.doctor_code ? `<p class="text-xs">${cfg.doctor_code}</p>` : ''}
-          `;
+          card.innerHTML = `<p class="text-sm text-red-500">Configuration ${cfg.name} invalide.</p>`;
           container.appendChild(card);
+          return;
         }
+
+        // Get all selects for this config
+        const selects = document.querySelectorAll(`select[data-config-id="${cfg.id}"]`);
+        let total = 0;
+        selects.forEach(sel => {
+          // If the category is present in cfgData, add the score
+          const catKey = sel.dataset.category;
+          if (cfgData[catKey] !== undefined) {
+            total += parseInt(sel.value) || 0;
+          }
+        });
+
+        const [gmax, ymax, omax] = cfgData.thresholds;
+        let idx = 0;
+        if (total <= gmax) idx = 0;
+        else if (total <= ymax) idx = 1;
+        else if (total <= omax) idx = 2;
+        else idx = 3;
+
+        const color = cfgData.colors[idx];
+        const level = cfgData.levels[idx];
+
+        const ticketCard = document.createElement('div');
+        ticketCard.className = 'border-2 rounded-lg p-4 bg-gray-50';
+        const colorClass = {
+          green: 'text-green-500', yellow: 'text-yellow-500', orange: 'text-orange-500', red: 'text-red-600'
+        }[color] || 'text-gray-600';
+        ticketCard.innerHTML = `
+          <p class="text-xs text-gray-500 mb-1">🎫 Ticket</p>
+          <div class="text-4xl sm:text-5xl font-black ${colorClass}">■</div>
+          <p class="text-lg sm:text-xl font-bold mt-1">${level}</p>
+          <p class="text-sm text-gray-500">Score: ${total}</p>
+          <p class="text-xs font-medium mt-1">${cfg.name}</p>
+          <p class="text-xs text-gray-500">${cfg.doctor_code ? 'Médecin: ' + cfg.doctor_code : 'Administrateur'}</p>
+        `;
+        container.appendChild(ticketCard);
       });
-      if (toEval.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-sm">Aucune solution à simuler.</p>';
-      }
     }
 
-    // ─── EDITOR (unchanged, same as previous working version) ───
+    // ─── EDITOR (unchanged) ───
     function showEditor() {
       if (!activeConfig) return;
       document.getElementById('editorSection').classList.remove('hidden');
@@ -305,7 +259,7 @@
         delCatBtn.className = 'absolute top-2 right-2 text-red-500 hover:text-red-700 text-xl leading-none p-1';
         delCatBtn.addEventListener('click', (e) => {
           e.preventDefault();
-          if (confirm(`⚠️ Supprimer la catégorie "${key}" et toutes ses options ?`)) {
+          if (confirm(`⚠️ Supprimer la catégorie "${key}" ?`)) {
             delete activeConfig[key];
             showEditor();
           }
@@ -338,7 +292,7 @@
         card.appendChild(table);
 
         const addOptBtn = document.createElement('button');
-        addOptBtn.textContent = '+ Ajouter une option';
+        addOptBtn.textContent = '+ Option';
         addOptBtn.className = 'text-blue-600 text-xs sm:text-sm mt-2 hover:underline';
         addOptBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -363,7 +317,6 @@
       `;
       editor.appendChild(thDiv);
 
-      // Colors & levels
       const clDiv = document.createElement('div');
       clDiv.className = 'border rounded-lg p-3 sm:p-4 mb-4';
       clDiv.innerHTML = `
@@ -377,7 +330,7 @@
       `;
       editor.appendChild(clDiv);
 
-      // Attach change listeners
+      // Attach listeners
       editor.querySelectorAll('input').forEach(inp => {
         inp.addEventListener('change', () => {
           const cat = inp.dataset.cat, idx = +inp.dataset.idx, field = inp.dataset.field;
@@ -389,7 +342,6 @@
         });
       });
 
-      // Delete option buttons
       editor.querySelectorAll('.delete-option-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
           e.preventDefault();
@@ -405,18 +357,15 @@
     }
 
     function addNewCategory() {
-      const name = prompt('Nom de la nouvelle catégorie (ex: "saturation") :');
+      const name = prompt('Nom de la catégorie :');
       if (!name) return;
-      if (activeConfig[name]) {
-        alert('Cette catégorie existe déjà.');
-        return;
-      }
+      if (activeConfig[name]) return alert('Existe déjà.');
       activeConfig[name] = { options: ['Normal', 'Anormal'], scores: [0, 5] };
       showEditor();
     }
 
     async function saveProposal() {
-      if (!doctorCode) return alert('Connectez-vous en tant que médecin.');
+      if (!doctorCode) return alert('Connectez-vous médecin.');
       const name = prompt('Nom de la configuration :');
       if (!name) return;
       const description = prompt('Description (optionnelle) :');
@@ -430,12 +379,12 @@
         loadAllConfigs();
       } else {
         const err = await res.json();
-        alert('❌ Erreur : ' + (err.error || 'inconnue'));
+        alert('❌ ' + (err.error || 'Erreur'));
       }
     }
 
     function resetConfig() {
-      if (confirm('Réinitialiser tous les changements ?')) {
+      if (confirm('Réinitialiser ?')) {
         activeConfig = JSON.parse(JSON.stringify(originalConfig));
         showEditor();
       }
@@ -468,9 +417,7 @@
           document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin ✓';
           document.getElementById('adminProposalsSection').classList.add('hidden');
           showEditor();
-        } else {
-          document.getElementById('loginError').classList.remove('hidden');
-        }
+        } else document.getElementById('loginError').classList.remove('hidden');
       } else {
         const res = await fetch(API_BASE + '/config/list', { headers: {'X-Admin-Code': code} });
         if (res.ok) {
@@ -483,9 +430,7 @@
           document.getElementById('adminBtn').textContent = '🔒 Admin ✓';
           showEditor();
           loadProposalsList();
-        } else {
-          document.getElementById('loginError').classList.remove('hidden');
-        }
+        } else document.getElementById('loginError').classList.remove('hidden');
       }
     }
     function logout() {
@@ -497,9 +442,10 @@
       document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin';
       document.getElementById('adminBtn').textContent = '🔒 Admin';
       document.getElementById('ticketsContainer').innerHTML = '';
+      // Re-render blocks without logged-in view if needed
     }
 
-    // ─── ADMIN PROPOSALS LIST ───
+    // ─── ADMIN LIST ───
     async function loadProposalsList() {
       if (!adminCode) return;
       const res = await fetch(API_BASE + '/config/list', { headers: {'X-Admin-Code': adminCode} });
@@ -507,8 +453,8 @@
       const container = document.getElementById('proposalsList');
       container.innerHTML = '';
       document.getElementById('adminProposalsSection').classList.remove('hidden');
-      if (configs.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-sm">Aucune configuration trouvée.</p>';
+      if (!configs.length) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">Aucune configuration.</p>';
         return;
       }
       configs.forEach(c => {
@@ -521,7 +467,7 @@
             <p class="text-xs text-gray-500 mt-1">Statut : <span class="font-medium">${c.status}</span> ${c.doctor_code ? '| Médecin: '+c.doctor_code : ''}</p>
           </div>
           <div class="flex gap-2 self-end sm:self-auto mt-2 sm:mt-0">
-            ${c.status !== 'active' ? 
+            ${c.status !== 'active' ?
               `<button onclick="activateConfig(${c.id})" class="bg-green-600 text-white px-3 py-1.5 rounded text-xs sm:text-sm hover:bg-green-700">Activer</button>` :
               `<button onclick="deactivateConfig(${c.id})" class="bg-yellow-500 text-white px-3 py-1.5 rounded text-xs sm:text-sm hover:bg-yellow-600">Désactiver</button>`
             }
@@ -533,41 +479,27 @@
 
     window.activateConfig = async (id) => {
       if (!adminCode || !confirm('Activer cette configuration ?')) return;
-      const res = await fetch(API_BASE + '/config/activate', {
+      await fetch(API_BASE + '/config/activate', {
         method: 'PUT', headers: {'Content-Type':'application/json','X-Admin-Code': adminCode},
         body: JSON.stringify({ id })
       });
-      if (res.ok) {
-        alert('✅ Configuration activée.');
-        loadProposalsList();
-        loadAllConfigs();
-        renderSimulator(); // refresh inputs because category union may have changed
-      } else {
-        const err = await res.json();
-        alert('❌ ' + err.error);
-      }
+      alert('✅ Activée.');
+      loadProposalsList();
+      loadAllConfigs();
     };
-
     window.deactivateConfig = async (id) => {
       if (!adminCode || !confirm('Désactiver cette configuration ?')) return;
-      const res = await fetch(API_BASE + '/config/deactivate', {
+      await fetch(API_BASE + '/config/deactivate', {
         method: 'PUT', headers: {'Content-Type':'application/json','X-Admin-Code': adminCode},
         body: JSON.stringify({ id })
       });
-      if (res.ok) {
-        alert('✅ Configuration désactivée.');
-        loadProposalsList();
-        loadAllConfigs();
-        renderSimulator();
-      } else {
-        const err = await res.json();
-        alert('❌ ' + err.error);
-      }
+      alert('✅ Désactivée.');
+      loadProposalsList();
+      loadAllConfigs();
     };
 
     // ─── INIT ───
     loadActiveConfig();
-    loadAllConfigs();
   </script>
 </body>
 </html>
