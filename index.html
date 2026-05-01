@@ -3,273 +3,506 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Triage Configurator</title>
+  <title>Triage Emergency</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
-  <div class="container mx-auto p-4 max-w-6xl">
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-blue-800">🩺 Triage Emergency</h1>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto px-4 py-6 max-w-6xl">
+    
+    <!-- HEADER -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6 flex justify-between items-center">
+      <h1 class="text-2xl font-bold text-blue-800">🏥 Triage Emergency</h1>
       <div class="flex gap-2">
-        <button id="doctorBtn" class="bg-blue-100 hover:bg-blue-200 px-4 py-2 rounded text-sm">👨‍⚕️ Médecin</button>
-        <button id="adminBtn" class="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded text-sm">🔒 Admin</button>
+        <button onclick="showLogin('doctor')" id="doctorBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
+          👨‍⚕️ Médecin
+        </button>
+        <button onclick="showLogin('admin')" id="adminBtn" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">
+          🔒 Admin
+        </button>
       </div>
     </div>
 
-    <!-- Simulator -->
-    <section class="bg-white rounded-lg shadow p-4 mb-6">
-      <h2 class="text-xl font-semibold mb-4">Simulateur de triage</h2>
-      <div id="simulator" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-      <div class="mt-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <button id="calculateBtn" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">Calculer</button>
-        <div id="ticketPreview" class="border rounded-lg p-4 bg-gray-100 w-full sm:w-64">
-          <p class="text-sm text-gray-500">Aperçu du ticket</p>
-          <div id="ticketColor" class="text-4xl font-black mt-1">-</div>
-          <p id="ticketLevel" class="text-lg font-medium"></p>
-          <p id="ticketScore" class="text-sm text-gray-600"></p>
+    <!-- STATUS BAR -->
+    <div id="statusBar" class="bg-yellow-50 border border-yellow-200 rounded p-3 mb-6 hidden">
+      <span id="statusText"></span>
+    </div>
+
+    <!-- SIMULATOR -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 class="text-xl font-semibold mb-4">📋 Simulateur de Triage</h2>
+      <div id="simulator" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      
+      <div class="mt-6 flex flex-col sm:flex-row items-start gap-4">
+        <button onclick="calculateTriage()" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold w-full sm:w-auto">
+          Calculer le Triage
+        </button>
+        
+        <div id="ticketPreview" class="border-2 rounded-lg p-4 bg-gray-50 w-full sm:w-72">
+          <p class="text-sm text-gray-600 mb-2">🎫 Aperçu du Ticket</p>
+          <div id="ticketColor" class="text-5xl font-black">-</div>
+          <p id="ticketLevel" class="text-xl font-bold mt-1"></p>
+          <p id="ticketScore" class="text-sm text-gray-500"></p>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- Config Editor (hidden, shown after doctor or admin login) -->
-    <section id="editorSection" class="bg-white rounded-lg shadow p-4 hidden">
+    <!-- CONFIG EDITOR (hidden by default) -->
+    <div id="editorSection" class="bg-white rounded-lg shadow p-6 mb-6 hidden">
       <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-semibold">Éditeur de configuration</h2>
-        <button id="saveProposalBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">💾 Proposer</button>
+        <h2 class="text-xl font-semibold">⚙️ Éditeur de Configuration</h2>
+        <div class="flex gap-2">
+          <button onclick="saveProposal()" id="saveProposalBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm hidden">
+            💾 Proposer
+          </button>
+          <button onclick="resetConfig()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 text-sm">
+            🔄 Réinitialiser
+          </button>
+        </div>
       </div>
-      <p id="editorHint" class="text-sm text-gray-500 mb-2"></p>
       <div id="configEditor"></div>
-    </section>
+    </div>
 
-    <!-- Admin proposals list (hidden) -->
-    <section id="adminListSection" class="bg-white rounded-lg shadow p-4 hidden">
-      <h2 class="text-xl font-semibold mb-4">Configurations proposées</h2>
-      <div id="proposalsList" class="space-y-2"></div>
-    </section>
+    <!-- ADMIN PROPOSALS LIST -->
+    <div id="adminProposalsSection" class="bg-white rounded-lg shadow p-6 mb-6 hidden">
+      <h2 class="text-xl font-semibold mb-4">📨 Propositions des Médecins</h2>
+      <div id="proposalsList" class="space-y-3"></div>
+    </div>
   </div>
 
-  <!-- Login Modal (shared for doctor/admin) -->
+  <!-- LOGIN MODAL -->
   <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg p-6 w-80">
-      <h3 id="loginTitle" class="text-lg font-bold mb-3">Code médecin</h3>
-      <input type="password" id="loginCodeInput" placeholder="Entrez votre code" class="w-full border rounded px-3 py-2 mb-3">
+    <div class="bg-white rounded-lg p-6 w-96">
+      <h3 id="loginTitle" class="text-xl font-bold mb-4"></h3>
+      <input type="password" id="loginCodeInput" placeholder="Entrez votre code secret" class="w-full border-2 rounded-lg px-4 py-2 mb-4 focus:border-blue-500">
+      <p id="loginError" class="text-red-500 text-sm mb-4 hidden">❌ Code incorrect. Veuillez réessayer.</p>
       <div class="flex justify-end gap-2">
-        <button id="cancelLogin" class="px-4 py-2 bg-gray-200 rounded">Annuler</button>
-        <button id="submitLogin" class="px-4 py-2 bg-blue-600 text-white rounded">Valider</button>
+        <button onclick="closeLogin()" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Annuler</button>
+        <button onclick="submitLogin()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Valider</button>
       </div>
-      <p id="loginError" class="text-red-500 text-sm mt-2 hidden">Code incorrect</p>
     </div>
   </div>
 
   <script>
+    // ─── GLOBAL STATE ───
     let activeConfig = null;
+    let originalConfig = null;
     let doctorCode = null;
     let adminCode = null;
-    const API = 'https://billowing-voice-4271.didcrist.workers.dev/api';
+    let loginMode = null;
+    const API_BASE = '/api';
 
-    // --- Load active config ---i
-    async function loadActive() {
-      const res = await fetch(`${API}/config`);
-      const text = await res.text();
-      activeConfig = JSON.parse(text);
-      renderSimulator();
-      if (doctorCode || adminCode) showEditor();
-    }
-
-    // --- Simulator ---
-    function renderSimulator() {
-      const container = document.getElementById('simulator');
-      container.innerHTML = '';
-      for (const [key, cat] of Object.entries(activeConfig)) {
-        if (['thresholds','colors','levels'].includes(key)) continue;
-        const div = document.createElement('div');
-        div.className = 'border p-3 rounded';
-        div.innerHTML = `<label class="block text-sm font-medium mb-1 capitalize">${key.replace(/_/g,' ')}</label>`;
-        const select = document.createElement('select');
-        select.className = 'w-full border rounded px-2 py-1 text-sm';
-        select.dataset.category = key;
-        cat.options.forEach((opt,i) => {
-          select.innerHTML += `<option value="${cat.scores[i]}">${opt} (score: ${cat.scores[i]})</option>`;
-        });
-        div.appendChild(select);
-        container.appendChild(div);
+    // ─── LOAD ACTIVE CONFIG ───
+    async function loadActiveConfig() {
+      try {
+        console.log('Loading config from:', API_BASE + '/config');
+        const response = await fetch(API_BASE + '/config');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const text = await response.text();
+        console.log('Config loaded successfully');
+        activeConfig = JSON.parse(text);
+        originalConfig = JSON.parse(text); // Deep copy
+        renderSimulator();
+        
+        if (doctorCode || adminCode) {
+          showEditor();
+        }
+      } catch (error) {
+        console.error('Failed to load config:', error);
+        alert('⚠️ Impossible de charger la configuration. Vérifiez la connexion à la base de données.');
       }
     }
 
-    document.getElementById('calculateBtn').onclick = () => {
-      let total = 0;
-      document.querySelectorAll('#simulator select').forEach(s => total += parseInt(s.value)||0);
-      const [gmax, ymax, omax] = activeConfig.thresholds;
-      let idx = 0;
-      if (total <= gmax) idx = 0;
-      else if (total <= ymax) idx = 1;
-      else if (total <= omax) idx = 2;
-      else idx = 3;
-      const color = activeConfig.colors[idx];
-      const tc = document.getElementById('ticketColor');
-      tc.textContent = '⬛';
-      tc.className = `text-4xl font-black mt-1 ${{
-        green:'text-green-600', yellow:'text-yellow-500', orange:'text-orange-500', red:'text-red-600'
-      }[color] || 'text-gray-600'}`;
-      document.getElementById('ticketLevel').textContent = activeConfig.levels[idx];
-      document.getElementById('ticketScore').textContent = `Score : ${total}`;
-    };
+    // ─── RENDER SIMULATOR ───
+    function renderSimulator() {
+      if (!activeConfig) {
+        console.error('No active config to render');
+        return;
+      }
+      
+      const container = document.getElementById('simulator');
+      container.innerHTML = '';
+      
+      Object.entries(activeConfig).forEach(([key, category]) => {
+        if (['thresholds', 'colors', 'levels'].includes(key)) return;
+        
+        const div = document.createElement('div');
+        div.className = 'border rounded-lg p-3';
+        
+        const label = document.createElement('label');
+        label.className = 'block text-sm font-semibold mb-2 capitalize text-gray-700';
+        label.textContent = key.replace(/_/g, ' ');
+        div.appendChild(label);
+        
+        const select = document.createElement('select');
+        select.className = 'w-full border rounded px-3 py-2 text-sm focus:border-blue-500';
+        select.dataset.category = key;
+        
+        category.options.forEach((option, index) => {
+          const opt = document.createElement('option');
+          opt.value = category.scores[index];
+          opt.textContent = `${option} (${category.scores[index]} pts)`;
+          select.appendChild(opt);
+        });
+        
+        div.appendChild(select);
+        container.appendChild(div);
+      });
+    }
 
-    // --- Editor ---
+    // ─── CALCULATE TRIAGE ───
+    function calculateTriage() {
+      if (!activeConfig) return;
+      
+      let totalScore = 0;
+      document.querySelectorAll('#simulator select').forEach(select => {
+        totalScore += parseInt(select.value) || 0;
+      });
+      
+      const [greenMax, yellowMax, orangeMax] = activeConfig.thresholds;
+      let levelIndex = 0;
+      
+      if (totalScore <= greenMax) levelIndex = 0;
+      else if (totalScore <= yellowMax) levelIndex = 1;
+      else if (totalScore <= orangeMax) levelIndex = 2;
+      else levelIndex = 3;
+      
+      const color = activeConfig.colors[levelIndex];
+      const level = activeConfig.levels[levelIndex];
+      
+      const ticketColor = document.getElementById('ticketColor');
+      ticketColor.textContent = '■';
+      
+      const colorClasses = {
+        green: 'text-green-500',
+        yellow: 'text-yellow-500',
+        orange: 'text-orange-500',
+        red: 'text-red-600'
+      };
+      
+      ticketColor.className = 'text-5xl font-black ' + (colorClasses[color] || 'text-gray-600');
+      document.getElementById('ticketLevel').textContent = level;
+      document.getElementById('ticketScore').textContent = `Score: ${totalScore} pts`;
+    }
+
+    // ─── SHOW CONFIG EDITOR ───
     function showEditor() {
       document.getElementById('editorSection').classList.remove('hidden');
-      const hint = document.getElementById('editorHint');
-      hint.textContent = doctorCode ? `Médecin connecté (code: ${doctorCode}). Modifiez puis proposez.` :
-                         adminCode ? `Mode administrateur – vous pouvez tout modifier et activer.` : '';
       const editor = document.getElementById('configEditor');
       editor.innerHTML = '';
-      // categories
-      for (const [key, cat] of Object.entries(activeConfig)) {
-        if (['thresholds','colors','levels'].includes(key)) continue;
+      
+      // Edit each category
+      Object.entries(activeConfig).forEach(([key, category]) => {
+        if (['thresholds', 'colors', 'levels'].includes(key)) return;
+        
         const card = document.createElement('div');
-        card.className = 'mb-4 border rounded p-3';
-        card.innerHTML = `<h3 class="font-medium mb-2 capitalize">${key.replace(/_/g,' ')}</h3>`;
+        card.className = 'border rounded-lg p-4 mb-4';
+        card.innerHTML = `<h3 class="font-semibold mb-3 capitalize">${key.replace(/_/g, ' ')}</h3>`;
+        
         const table = document.createElement('table');
         table.className = 'w-full text-sm';
-        table.innerHTML = '<thead><tr><th>Option</th><th>Score</th></tr></thead><tbody></tbody>';
+        table.innerHTML = `
+          <thead>
+            <tr class="bg-gray-50">
+              <th class="text-left p-1">Option</th>
+              <th class="text-left p-1 w-24">Score</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        
         const tbody = table.querySelector('tbody');
-        cat.options.forEach((opt,i) => {
-          tbody.innerHTML += `<tr>
-            <td class="py-1 pr-2"><input type="text" value="${opt}" data-cat="${key}" data-idx="${i}" data-field="option" class="w-full border rounded px-1"></td>
-            <td><input type="number" value="${cat.scores[i]}" data-cat="${key}" data-idx="${i}" data-field="score" class="w-16 border rounded px-1"></td>
-          </tr>`;
+        category.options.forEach((option, index) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td class="p-1">
+              <input type="text" value="${option}" 
+                     data-category="${key}" data-index="${index}" data-field="option"
+                     class="w-full border rounded px-2 py-1 text-sm">
+            </td>
+            <td class="p-1">
+              <input type="number" value="${category.scores[index]}" 
+                     data-category="${key}" data-index="${index}" data-field="score"
+                     class="w-20 border rounded px-2 py-1 text-sm">
+            </td>
+          `;
+          tbody.appendChild(row);
         });
+        
         card.appendChild(table);
+        
+        // Add option button
         const addBtn = document.createElement('button');
         addBtn.textContent = '+ Ajouter une option';
-        addBtn.className = 'text-blue-600 text-sm mt-2';
+        addBtn.className = 'text-blue-600 text-sm mt-2 hover:underline';
         addBtn.onclick = () => {
-          cat.options.push('Nouveau');
-          cat.scores.push(0);
+          category.options.push('Nouvelle option');
+          category.scores.push(0);
           showEditor();
         };
         card.appendChild(addBtn);
+        
         editor.appendChild(card);
-      }
-      // thresholds
-      const thCard = document.createElement('div');
-      thCard.className = 'mb-4 border rounded p-3';
-      thCard.innerHTML = '<h3 class="font-medium mb-2">Seuils (max Vert, Jaune, Orange)</h3>';
-      thCard.innerHTML += ['Vert max','Jaune max','Orange max'].map((l,i) =>
-        `<label class="mr-2">${l}<input type="number" value="${activeConfig.thresholds[i]}" data-threshold="${i}" class="ml-1 border rounded w-20 px-1"></label>`).join('');
-      editor.appendChild(thCard);
-      // colors/levels
-      editor.innerHTML += `<div class="mb-4 border rounded p-3">
-        <h3 class="font-medium mb-2">Couleurs & Niveaux</h3>
-        ${[0,1,2,3].map(i => `<div class="grid grid-cols-2 gap-2 text-sm mb-1">
-          <input type="text" value="${activeConfig.colors[i]}" data-color="${i}" class="border rounded px-1">
-          <input type="text" value="${activeConfig.levels[i]}" data-level="${i}" class="border rounded px-1">
-        </div>`).join('')}
-      </div>`;
-
-      // attach listeners
-      editor.querySelectorAll('input').forEach(inp => {
-        inp.addEventListener('change', function() {
-          if (this.dataset.cat && this.dataset.field === 'option')
-            activeConfig[this.dataset.cat].options[parseInt(this.dataset.idx)] = this.value;
-          else if (this.dataset.cat && this.dataset.field === 'score')
-            activeConfig[this.dataset.cat].scores[parseInt(this.dataset.idx)] = parseInt(this.value)||0;
-          else if (this.dataset.threshold !== undefined)
-            activeConfig.thresholds[parseInt(this.dataset.threshold)] = parseInt(this.value)||0;
-          else if (this.dataset.color !== undefined) activeConfig.colors[parseInt(this.dataset.color)] = this.value;
-          else if (this.dataset.level !== undefined) activeConfig.levels[parseInt(this.dataset.level)] = this.value;
+      });
+      
+      // Edit thresholds
+      editor.innerHTML += `
+        <div class="border rounded-lg p-4 mb-4">
+          <h3 class="font-semibold mb-3">Seuils de Triage</h3>
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="text-xs">Vert maximum</label>
+              <input type="number" id="threshold0" value="${activeConfig.thresholds[0]}" 
+                     class="w-full border rounded px-2 py-1 text-sm">
+            </div>
+            <div>
+              <label class="text-xs">Jaune maximum</label>
+              <input type="number" id="threshold1" value="${activeConfig.thresholds[1]}" 
+                     class="w-full border rounded px-2 py-1 text-sm">
+            </div>
+            <div>
+              <label class="text-xs">Orange maximum</label>
+              <input type="number" id="threshold2" value="${activeConfig.thresholds[2]}" 
+                     class="w-full border rounded px-2 py-1 text-sm">
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // Edit colors and levels
+      editor.innerHTML += `
+        <div class="border rounded-lg p-4 mb-4">
+          <h3 class="font-semibold mb-3">Couleurs et Niveaux</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            ${[0,1,2,3].map(i => `
+              <div>
+                <label class="text-xs">Couleur ${i+1}</label>
+                <input type="text" id="color${i}" value="${activeConfig.colors[i]}" 
+                       class="w-full border rounded px-2 py-1 text-sm">
+              </div>
+              <div>
+                <label class="text-xs">Niveau ${i+1}</label>
+                <input type="text" id="level${i}" value="${activeConfig.levels[i]}" 
+                       class="w-full border rounded px-2 py-1 text-sm">
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      
+      // Attach change listeners
+      editor.querySelectorAll('input').forEach(input => {
+        input.addEventListener('change', () => {
+          if (input.dataset.category && input.dataset.field === 'option') {
+            activeConfig[input.dataset.category].options[parseInt(input.dataset.index)] = input.value;
+          } else if (input.dataset.category && input.dataset.field === 'score') {
+            activeConfig[input.dataset.category].scores[parseInt(input.dataset.index)] = parseInt(input.value) || 0;
+          } else if (input.id.startsWith('threshold')) {
+            activeConfig.thresholds[parseInt(input.id.replace('threshold', ''))] = parseInt(input.value) || 0;
+          } else if (input.id.startsWith('color')) {
+            activeConfig.colors[parseInt(input.id.replace('color', ''))] = input.value;
+          } else if (input.id.startsWith('level')) {
+            activeConfig.levels[parseInt(input.id.replace('level', ''))] = input.value;
+          }
         });
       });
     }
 
-    // --- Proposal saving (doctor) ---
-    document.getElementById('saveProposalBtn').onclick = async () => {
-      if (!doctorCode) return alert('Connectez-vous en tant que médecin.');
-      const name = prompt('Nom de la configuration :', 'Proposition ' + new Date().toLocaleString());
+    // ─── SAVE PROPOSAL ───
+    async function saveProposal() {
+      if (!doctorCode) {
+        alert('Connectez-vous en tant que médecin pour proposer une configuration.');
+        return;
+      }
+      
+      const name = prompt('Nom de votre configuration :');
       if (!name) return;
-      const desc = prompt('Description (optionnelle) :');
-      const res = await fetch(`${API}/config/propose`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Doctor-Code': doctorCode },
-        body: JSON.stringify({ name, description: desc, json_data: activeConfig })
-      });
-      if (res.ok) alert('Proposition envoyée à l’administrateur.');
-      else alert('Erreur');
-    };
-
-    // --- Modal logic ---
-    const modal = document.getElementById('loginModal');
-    const title = document.getElementById('loginTitle');
-    let mode = ''; // 'doctor' or 'admin'
-
-    function openModal(m) {
-      mode = m;
-      title.textContent = m === 'doctor' ? 'Code médecin' : 'Code administrateur';
-      document.getElementById('loginCodeInput').value = '';
-      document.getElementById('loginError').classList.add('hidden');
-      modal.classList.remove('hidden');
+      
+      const description = prompt('Description (optionnelle) :');
+      
+      try {
+        const response = await fetch(API_BASE + '/config/propose', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Doctor-Code': doctorCode
+          },
+          body: JSON.stringify({
+            name: name,
+            description: description || '',
+            json_data: activeConfig
+          })
+        });
+        
+        if (response.ok) {
+          alert('✅ Proposition envoyée à l\'administrateur !');
+        } else {
+          const error = await response.json();
+          alert('❌ Erreur: ' + error.error);
+        }
+      } catch (error) {
+        alert('❌ Erreur réseau: ' + error.message);
+      }
     }
 
-    document.getElementById('doctorBtn').onclick = () => openModal('doctor');
-    document.getElementById('adminBtn').onclick = () => openModal('admin');
-    document.getElementById('cancelLogin').onclick = () => modal.classList.add('hidden');
+    // ─── RESET CONFIG ───
+    function resetConfig() {
+      if (confirm('Réinitialiser tous les changements ?')) {
+        activeConfig = JSON.parse(JSON.stringify(originalConfig));
+        showEditor();
+      }
+    }
 
-    document.getElementById('submitLogin').onclick = async () => {
+    // ─── LOGIN MODAL ───
+    function showLogin(mode) {
+      loginMode = mode;
+      document.getElementById('loginTitle').textContent = 
+        mode === 'doctor' ? '🔑 Code Médecin' : '🔒 Code Administrateur';
+      document.getElementById('loginCodeInput').value = '';
+      document.getElementById('loginError').classList.add('hidden');
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function closeLogin() {
+      document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    async function submitLogin() {
       const code = document.getElementById('loginCodeInput').value.trim();
-      if (!code) return;
-      if (mode === 'doctor') {
-        const res = await fetch(`${API}/doctor/validate`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code}) });
-        if (res.ok && (await res.json()).valid) {
-          doctorCode = code; adminCode = null;
-          modal.classList.add('hidden');
-          showEditor();
-          document.getElementById('saveProposalBtn').style.display = 'inline-block';
-          document.getElementById('adminListSection').classList.add('hidden');
-        } else document.getElementById('loginError').classList.remove('hidden');
-      } else {
-        const res = await fetch(`${API}/config/list`, { headers:{'X-Admin-Code':code} });
-        if (res.ok) {
-          adminCode = code; doctorCode = null;
-          modal.classList.add('hidden');
-          showEditor();
-          document.getElementById('saveProposalBtn').style.display = 'none';
-          loadProposals();
-        } else document.getElementById('loginError').classList.remove('hidden');
+      
+      if (!code) {
+        document.getElementById('loginError').textContent = 'Veuillez entrer un code.';
+        document.getElementById('loginError').classList.remove('hidden');
+        return;
+      }
+      
+      if (loginMode === 'doctor') {
+        try {
+          const response = await fetch(API_BASE + '/doctor/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code })
+          });
+          
+          const data = await response.json();
+          
+          if (data.valid) {
+            doctorCode = code;
+            adminCode = null;
+            closeLogin();
+            document.getElementById('statusBar').classList.remove('hidden');
+            document.getElementById('statusText').textContent = 
+              `✅ Connecté en tant que médecin${data.name ? ' : ' + data.name : ''}`;
+            document.getElementById('statusBar').className = 'bg-blue-50 border border-blue-200 rounded p-3 mb-6';
+            document.getElementById('saveProposalBtn').classList.remove('hidden');
+            document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin ✓';
+            showEditor();
+          } else {
+            document.getElementById('loginError').classList.remove('hidden');
+          }
+        } catch (error) {
+          console.error('Login error:', error);
+          document.getElementById('loginError').textContent = 'Erreur de connexion. Vérifiez votre connexion internet.';
+          document.getElementById('loginError').classList.remove('hidden');
+        }
+      } else if (loginMode === 'admin') {
+        try {
+          // Test admin access by fetching config list
+          const response = await fetch(API_BASE + '/config/list', {
+            headers: { 'X-Admin-Code': code }
+          });
+          
+          if (response.ok) {
+            adminCode = code;
+            doctorCode = null;
+            closeLogin();
+            document.getElementById('statusBar').classList.remove('hidden');
+            document.getElementById('statusText').textContent = '✅ Connecté en tant qu\'administrateur';
+            document.getElementById('statusBar').className = 'bg-red-50 border border-red-200 rounded p-3 mb-6';
+            document.getElementById('saveProposalBtn').classList.add('hidden');
+            document.getElementById('adminBtn').textContent = '🔒 Admin ✓';
+            showEditor();
+            loadProposalsList();
+          } else {
+            document.getElementById('loginError').classList.remove('hidden');
+          }
+        } catch (error) {
+          console.error('Admin login error:', error);
+          document.getElementById('loginError').textContent = 'Erreur de connexion.';
+          document.getElementById('loginError').classList.remove('hidden');
+        }
+      }
+    }
+
+    // ─── ADMIN: LOAD PROPOSALS ───
+    async function loadProposalsList() {
+      if (!adminCode) return;
+      
+      try {
+        const response = await fetch(API_BASE + '/config/list', {
+          headers: { 'X-Admin-Code': adminCode }
+        });
+        
+        const configs = await response.json();
+        const container = document.getElementById('proposalsList');
+        container.innerHTML = '';
+        
+        document.getElementById('adminProposalsSection').classList.remove('hidden');
+        
+        configs.forEach(config => {
+          const div = document.createElement('div');
+          div.className = 'border rounded-lg p-4 flex justify-between items-center';
+          div.innerHTML = `
+            <div>
+              <p class="font-semibold">${config.name}</p>
+              <p class="text-sm text-gray-600">${config.description || 'Pas de description'}</p>
+              <p class="text-xs text-gray-500">
+                Status: ${config.status} 
+                ${config.doctor_code ? `| Médecin: ${config.doctor_code}` : ''}
+              </p>
+            </div>
+            ${config.status !== 'active' ? 
+              `<button onclick="activateConfig(${config.id})" 
+                       class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+                Activer
+              </button>` : 
+              '<span class="text-green-600 font-semibold">Actif</span>'
+            }
+          `;
+          container.appendChild(div);
+        });
+      } catch (error) {
+        console.error('Failed to load proposals:', error);
+      }
+    }
+
+    // ─── ACTIVATE CONFIG ───
+    window.activateConfig = async function(id) {
+      if (!adminCode) return;
+      
+      try {
+        await fetch(API_BASE + '/config/activate', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Code': adminCode
+          },
+          body: JSON.stringify({ id: id })
+        });
+        
+        alert('✅ Configuration activée avec succès !');
+        await loadActiveConfig();
+        await loadProposalsList();
+      } catch (error) {
+        alert('❌ Erreur lors de l\'activation');
       }
     };
 
-    // --- Admin proposals list & activation ---
-    async function loadProposals() {
-      if (!adminCode) return;
-      const list = document.getElementById('proposalsList');
-      const res = await fetch(`${API}/config/list`, { headers: {'X-Admin-Code': adminCode} });
-      const configs = await res.json();
-      document.getElementById('adminListSection').classList.remove('hidden');
-      list.innerHTML = configs.map(c => `
-        <div class="p-3 border rounded">
-          <span class="font-medium">${c.name}</span>
-          <span class="text-sm text-gray-500 ml-2">(${c.status})</span>
-          ${c.doctor_code ? `<span class="text-xs ml-2">par ${c.doctor_code}</span>` : ''}
-          <div class="mt-1">
-            <button onclick="activateConfig(${c.id})" class="bg-blue-500 text-white px-2 py-1 rounded text-xs">Activer</button>
-          </div>
-        </div>`).join('');
-    }
-
-    window.activateConfig = async (id) => {
-      if (!adminCode) return;
-      await fetch(`${API}/config/activate`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Code': adminCode },
-        body: JSON.stringify({ id })
-      });
-      await loadActive();
-      loadProposals();
-    };
-
-    // Init
-    loadActive();
+    // ─── INIT ───
+    loadActiveConfig();
   </script>
 </body>
 </html>
