@@ -33,7 +33,7 @@
 
     <!-- SIMULATOR (one block per configuration) -->
     <div class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg sm:text-xl font-semibold mb-2">📋 Simulateur de Triage</h2>
+      <h2 class="text-lg sm:text-xl font-semibold mb-2">Simulateur de Triage</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
         Remplissez les champs pour chaque solution indépendamment, puis cliquez sur
         <strong>Calculer</strong>. Chaque configuration sera évaluée séparément.
@@ -54,10 +54,10 @@
         <div class="flex gap-2 flex-wrap">
           <button onclick="addNewCategory()" class="bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 text-xs sm:text-sm">+ Catégorie</button>
           <button onclick="saveProposal()" id="saveProposalBtn" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-xs sm:text-sm hidden">
-            💾 Proposer
+             Proposer
           </button>
           <button onclick="resetConfig()" class="bg-gray-200 px-3 py-2 rounded hover:bg-gray-300 text-xs sm:text-sm">
-            🔄 Réinitialiser
+             Réinitialiser
           </button>
         </div>
       </div>
@@ -81,7 +81,7 @@
       <h3 id="loginTitle" class="text-lg font-bold mb-4"></h3>
       <input type="password" id="loginCodeInput" placeholder="Entrez votre code secret" 
              class="w-full border-2 rounded-lg px-4 py-2 mb-4 focus:border-blue-500" autocomplete="off">
-      <p id="loginError" class="text-red-500 text-sm mb-4 hidden">❌ Code incorrect.</p>
+      <p id="loginError" class="text-red-500 text-sm mb-4 hidden"> Code incorrect.</p>
       <div class="flex justify-end gap-2">
         <button onclick="closeLogin()" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">Annuler</button>
         <button onclick="submitLogin()" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">Valider</button>
@@ -113,7 +113,7 @@
       } catch (e) {
         console.error(e);
         document.getElementById('configsList').innerHTML = 
-          '<p class="text-red-500 text-sm">❌ Impossible de charger les configurations.</p>';
+          '<p class="text-red-500 text-sm"> Impossible de charger les configurations.</p>';
       }
     }
 
@@ -230,7 +230,7 @@
           green: 'text-green-500', yellow: 'text-yellow-500', orange: 'text-orange-500', red: 'text-red-600'
         }[color] || 'text-gray-600';
         ticketCard.innerHTML = `
-          <p class="text-xs text-gray-500 mb-1">🎫 Ticket</p>
+          <p class="text-xs text-gray-500 mb-1"> Ticket</p>
           <div class="text-4xl sm:text-5xl font-black ${colorClass}">■</div>
           <p class="text-lg sm:text-xl font-bold mt-1">${level}</p>
           <p class="text-sm text-gray-500">Score: ${total}</p>
@@ -411,10 +411,10 @@
           doctorCode = code; adminCode = null;
           closeLogin();
           document.getElementById('statusBar').classList.remove('hidden');
-          document.getElementById('statusText').textContent = '✅ Médecin ' + (data.name||'');
+          document.getElementById('statusText').textContent = ' Médecin ' + (data.name||'');
           document.getElementById('statusBar').className = 'bg-blue-50 border border-blue-200 rounded p-3 mb-4';
           document.getElementById('saveProposalBtn').classList.remove('hidden');
-          document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin ✓';
+          document.getElementById('doctorBtn').textContent = ' Médecin ✓';
           document.getElementById('adminProposalsSection').classList.add('hidden');
           showEditor();
         } else document.getElementById('loginError').classList.remove('hidden');
@@ -424,10 +424,10 @@
           adminCode = code; doctorCode = null;
           closeLogin();
           document.getElementById('statusBar').classList.remove('hidden');
-          document.getElementById('statusText').textContent = '✅ Admin';
+          document.getElementById('statusText').textContent = ' Admin';
           document.getElementById('statusBar').className = 'bg-red-50 border border-red-200 rounded p-3 mb-4';
           document.getElementById('saveProposalBtn').classList.add('hidden');
-          document.getElementById('adminBtn').textContent = '🔒 Admin ✓';
+          document.getElementById('adminBtn').textContent = ' Admin ✓';
           showEditor();
           loadProposalsList();
         } else document.getElementById('loginError').classList.remove('hidden');
@@ -439,8 +439,8 @@
       document.getElementById('editorSection').classList.add('hidden');
       document.getElementById('adminProposalsSection').classList.add('hidden');
       document.getElementById('saveProposalBtn').classList.add('hidden');
-      document.getElementById('doctorBtn').textContent = '👨‍⚕️ Médecin';
-      document.getElementById('adminBtn').textContent = '🔒 Admin';
+      document.getElementById('doctorBtn').textContent = ' Médecin';
+      document.getElementById('adminBtn').textContent = ' Admin';
       document.getElementById('ticketsContainer').innerHTML = '';
       // Re-render blocks without logged-in view if needed
     }
