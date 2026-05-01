@@ -6,16 +6,8 @@
   <title>Triage Emergency</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Ensure buttons are easy to tap on mobile */
-    button, .btn {
-      min-height: 44px;
-      min-width: 44px;
-    }
-    @media (max-width: 640px) {
-      .responsive-grid {
-        grid-template-columns: 1fr;
-      }
-    }
+    button, .btn { min-height: 44px; min-width: 44px; }
+    @media (max-width: 640px) { .responsive-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans antialiased">
@@ -40,12 +32,14 @@
       <button onclick="logout()" class="float-right text-sm text-red-600 hover:underline">Déconnexion</button>
     </div>
 
-    <!-- SIMULATOR -->
+    <!-- SIMULATOR (inputs from union of categories) -->
     <div class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
-      <h2 class="text-lg sm:text-xl font-semibold mb-4">📋 Simulateur de Triage</h2>
+      <h2 class="text-lg sm:text-xl font-semibold mb-2">📋 Simulateur de Triage</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
-        Remplissez les champs une seule fois. Le ticket sera calculé pour <strong>chaque solution active ou proposée</strong>.
+        Saisissez les données du patient une seule fois. Le ticket sera calculé pour <strong>chaque solution active ou proposée</strong>.
       </p>
+      <!-- List of configurations being simulated -->
+      <div id="activeConfigsSummary" class="text-xs text-gray-600 mb-3 flex flex-wrap gap-1"></div>
       <div id="simulator" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"></div>
       <div class="mt-5">
         <button onclick="calculateAllTickets()" class="bg-green-600 text-white px-5 py-3 rounded-lg hover:bg-green-700 font-semibold w-full sm:w-auto text-sm sm:text-base">
@@ -74,9 +68,9 @@
 
     <!-- ADMIN PROPOSALS LIST -->
     <div id="adminProposalsSection" class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 hidden">
-      <h2 class="text-lg sm:text-xl font-semibold mb-4">📨 Configurations Proposées</h2>
+      <h2 class="text-lg sm:text-xl font-semibold mb-2">📨 Configurations Proposées</h2>
       <p class="text-xs sm:text-sm text-gray-500 mb-3">
-        Plusieurs configurations peuvent être actives en même temps. Seules les actives et les proposées apparaîtront dans le simulateur.
+        Plusieurs configurations peuvent être actives simultanément. Gérez leur statut ici.
       </p>
       <div id="proposalsList" class="space-y-3"></div>
     </div>
@@ -98,17 +92,16 @@
   </div>
 
   <script>
-    // ⚠️ YOUR WORKER URL ⚠️
     const API_BASE = 'https://billowing-voice-4271.didcrist.workers.dev/api';
     
-    let activeConfig = null;       // fetched from /config (first active) – used as editing template
+    let activeConfig = null;       // first active config (used as editing template)
     let originalConfig = null;
-    let allConfigs = [];           // all active + proposed for simulator
+    let allConfigs = [];           // all active + proposed for simulator & summary
     let doctorCode = null;
     let adminCode = null;
     let loginMode = null;
 
-    // ─── LOAD ACTIVE CONFIG (single, for editor) & ALL CONFIGS (for simulator) ───
+    // ─── Fetch the first active config (template) and all active+proposed ───
     async function loadActiveConfig() {
       try {
         const res = await fetch(API_BASE + '/config');
@@ -116,7 +109,9 @@
         const text = await res.text();
         activeConfig = JSON.parse(text);
         originalConfig = JSON.parse(text);
-        renderSimulator();
+        loadAllConfigs().then(() => {
+          renderSimulator();  // will now use union categories
+        });
         if (doctorCode || adminCode) showEditor();
       } catch (e) {
         console.error(e);
@@ -130,33 +125,81 @@
         const res = await fetch(API_BASE + '/config/all');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         allConfigs = await res.json();
+        updateActiveSummary();
       } catch (e) {
         console.error(e);
       }
     }
 
-    // ─── BUILD SIMULATOR INPUTS ───
+    // ─── Show a small summary of which configurations are being simulated ───
+    function updateActiveSummary() {
+      const container = document.getElementById('activeConfigsSummary');
+      if (!allConfigs.length) {
+        container.innerHTML = '';
+        return;
+      }
+      const names = allConfigs.map(c => {
+        return `<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">${c.name} ${c.doctor_code ? '('+c.doctor_code+')' : ''}</span>`;
+      }).join(' ');
+      container.innerHTML = 'Configurations prises en compte : ' + names;
+    }
+
+    // ─── Build simulator inputs using UNION of categories from all active+proposed configs ───
     function renderSimulator() {
       if (!activeConfig) return;
       const container = document.getElementById('simulator');
       container.innerHTML = '';
-      for (const [key, cat] of Object.entries(activeConfig)) {
-        if (['thresholds','colors','levels'].includes(key)) continue;
+
+      // Collect all category keys from all configs (active+proposed)
+      const allCategories = new Set();
+      // Always include categories from activeConfig (template)
+      Object.keys(activeConfig).forEach(k => {
+        if (!['thresholds','colors','levels'].includes(k)) allCategories.add(k);
+      });
+      // Add categories from allConfigs (parsed from json_data)
+      allConfigs.forEach(cfg => {
+        try {
+          const data = typeof cfg.json_data === 'string' ? JSON.parse(cfg.json_data) : cfg.json_data;
+          if (data) {
+            Object.keys(data).forEach(k => {
+              if (!['thresholds','colors','levels'].includes(k)) allCategories.add(k);
+            });
+          }
+        } catch(e) {}
+      });
+
+      // Sort categories alphabetically for consistency
+      const sortedCats = Array.from(allCategories).sort();
+
+      // For each category, build a select using the options from the activeConfig (if exists),
+      // otherwise create a default select with a simple "Normal / Anormal"
+      sortedCats.forEach(key => {
         const div = document.createElement('div');
         div.className = 'border rounded-lg p-3';
-        div.innerHTML = `<label class="block text-xs sm:text-sm font-semibold mb-1 capitalize text-gray-700">${key.replace(/_/g,' ')}</label>`;
+        const label = document.createElement('label');
+        label.className = 'block text-xs sm:text-sm font-semibold mb-1 capitalize text-gray-700';
+        label.textContent = key.replace(/_/g, ' ');
+        div.appendChild(label);
+
         const select = document.createElement('select');
         select.className = 'w-full border rounded px-3 py-2 text-sm bg-white';
         select.dataset.category = key;
-        cat.options.forEach((opt, i) => {
-          select.innerHTML += `<option value="${cat.scores[i]}">${opt} (${cat.scores[i]})</option>`;
-        });
+
+        // If activeConfig has this category, use its options/scores; otherwise fallback
+        if (activeConfig[key] && activeConfig[key].options) {
+          activeConfig[key].options.forEach((opt, i) => {
+            select.innerHTML += `<option value="${activeConfig[key].scores[i]}">${opt} (${activeConfig[key].scores[i]})</option>`;
+          });
+        } else {
+          // Create a generic set of options (Normal / Anormal)
+          select.innerHTML += `<option value="0">Normal (0)</option><option value="5">Anormal (5)</option>`;
+        }
         div.appendChild(select);
         container.appendChild(div);
-      }
+      });
     }
 
-    // ─── CALCULATE TICKET FOR ONE CONFIGURATION ───
+    // ─── Calculate ticket for a single configuration ───
     function calculateForConfig(config) {
       const json = config.json_data || JSON.stringify(config);
       let configData;
@@ -190,36 +233,33 @@
       };
     }
 
-    // ─── CALCULATE ALL TICKETS (triggered by button) ───
+    // ─── Calculate all tickets (called by button) ───
     async function calculateAllTickets() {
       if (!activeConfig) return;
-      await loadAllConfigs();
+      await loadAllConfigs(); // refresh list
       const container = document.getElementById('ticketsContainer');
       container.innerHTML = '';
 
-      // Combine active config (the one used for editing) with all Configs from API
-      const toEvaluate = [];
-      // first add the activeConfig as a special entry
-      toEvaluate.push({ id: 'active', name: 'Active (template)', doctor_code: null, json_data: JSON.stringify(activeConfig) });
-      // add all configs from DB
+      // Collect all configs to evaluate: include the template activeConfig + all from DB
+      const toEval = [];
+      // Add the activeConfig as a special entry
+      toEval.push({ id: 'active', name: 'Active (template)', doctor_code: null, json_data: JSON.stringify(activeConfig) });
+      // Add all configs from the API
       allConfigs.forEach(cfg => {
-        // avoid exact duplicate if a config's id matches and appears twice (unlikely)
-        if (!toEvaluate.find(e => e.id === cfg.id)) {
-          toEvaluate.push(cfg);
+        // Avoid duplicate if same id (unlikely) and same name? Just push all.
+        if (!toEval.find(e => e.id === cfg.id)) {
+          toEval.push(cfg);
         }
       });
 
-      // Evaluate each, show ticket or fallback
-      toEvaluate.forEach(cfg => {
+      // Evaluate each
+      toEval.forEach(cfg => {
         const ticket = calculateForConfig(cfg);
         if (ticket) {
           const card = document.createElement('div');
           card.className = 'border-2 rounded-lg p-4 bg-gray-50';
           const colorClass = {
-            green: 'text-green-500',
-            yellow: 'text-yellow-500',
-            orange: 'text-orange-500',
-            red: 'text-red-600'
+            green: 'text-green-500', yellow: 'text-yellow-500', orange: 'text-orange-500', red: 'text-red-600'
           }[ticket.color] || 'text-gray-600';
           card.innerHTML = `
             <p class="text-xs text-gray-500 mb-1">🎫 Ticket</p>
@@ -231,19 +271,23 @@
           `;
           container.appendChild(card);
         } else {
+          // Placeholder for configs that couldn't be evaluated (shouldn't happen often)
           const card = document.createElement('div');
           card.className = 'border rounded-lg p-4 bg-gray-50';
           card.innerHTML = `
             <p class="font-semibold text-sm">${cfg.name || 'Inconnu'}</p>
-            <p class="text-xs text-red-500">Impossible de simuler (catégories différentes)</p>
+            <p class="text-xs text-red-500">Catégories incompatibles</p>
             ${cfg.doctor_code ? `<p class="text-xs">${cfg.doctor_code}</p>` : ''}
           `;
           container.appendChild(card);
         }
       });
+      if (toEval.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">Aucune solution à simuler.</p>';
+      }
     }
 
-    // ─── EDITOR (add/delete options & categories with confirmations) ───
+    // ─── EDITOR (unchanged, same as previous working version) ───
     function showEditor() {
       if (!activeConfig) return;
       document.getElementById('editorSection').classList.remove('hidden');
@@ -254,8 +298,7 @@
         if (['thresholds','colors','levels'].includes(key)) continue;
         const card = document.createElement('div');
         card.className = 'border rounded-lg p-3 sm:p-4 mb-4 relative';
-        
-        // Delete category button (top-right)
+
         const delCatBtn = document.createElement('button');
         delCatBtn.innerHTML = '🗑️';
         delCatBtn.title = 'Supprimer la catégorie';
@@ -264,7 +307,7 @@
           e.preventDefault();
           if (confirm(`⚠️ Supprimer la catégorie "${key}" et toutes ses options ?`)) {
             delete activeConfig[key];
-            showEditor(); // re-render
+            showEditor();
           }
         });
         card.appendChild(delCatBtn);
@@ -274,7 +317,6 @@
         header.textContent = key.replace(/_/g, ' ');
         card.appendChild(header);
 
-        // Table for options
         const table = document.createElement('table');
         table.className = 'w-full text-sm';
         table.innerHTML = '<thead><tr class="bg-gray-50"><th class="text-left p-1">Option</th><th class="text-left p-1 w-20 sm:w-24">Score</th><th class="p-1 w-8"></th></tr></thead><tbody></tbody>';
@@ -285,29 +327,16 @@
           cat.options.forEach((opt, i) => {
             const row = document.createElement('tr');
             row.innerHTML = `
-              <td class="p-1">
-                <input type="text" value="${opt.replace(/"/g, '&quot;')}" 
-                       data-cat="${key}" data-idx="${i}" data-field="option" 
-                       class="w-full border rounded px-2 py-1 text-xs sm:text-sm" />
-              </td>
-              <td class="p-1">
-                <input type="number" value="${cat.scores[i]}" 
-                       data-cat="${key}" data-idx="${i}" data-field="score" 
-                       class="w-16 sm:w-20 border rounded px-2 py-1 text-xs sm:text-sm" />
-              </td>
-              <td class="p-1 text-center">
-                <button class="text-red-500 hover:text-red-700 delete-option-btn" 
-                        data-key="${key}" data-idx="${i}">✕</button>
-              </td>
+              <td class="p-1"><input type="text" value="${opt.replace(/"/g, '&quot;')}" data-cat="${key}" data-idx="${i}" data-field="option" class="w-full border rounded px-2 py-1 text-xs sm:text-sm"></td>
+              <td class="p-1"><input type="number" value="${cat.scores[i]}" data-cat="${key}" data-idx="${i}" data-field="score" class="w-16 sm:w-20 border rounded px-2 py-1 text-xs sm:text-sm"></td>
+              <td class="p-1 text-center"><button class="text-red-500 hover:text-red-700 delete-option-btn" data-key="${key}" data-idx="${i}">✕</button></td>
             `;
             tbody.appendChild(row);
           });
         };
-        renderOptions(); // fill initially
-
+        renderOptions();
         card.appendChild(table);
 
-        // Add option button
         const addOptBtn = document.createElement('button');
         addOptBtn.textContent = '+ Ajouter une option';
         addOptBtn.className = 'text-blue-600 text-xs sm:text-sm mt-2 hover:underline';
@@ -315,31 +344,21 @@
           e.preventDefault();
           cat.options.push('Nouveau');
           cat.scores.push(0);
-          showEditor(); // re-render the entire editor to keep things simple
+          showEditor();
         });
         card.appendChild(addOptBtn);
-
         editor.appendChild(card);
       }
 
-      // Thresholds section
+      // Thresholds
       const thDiv = document.createElement('div');
       thDiv.className = 'border rounded-lg p-3 sm:p-4 mb-4';
       thDiv.innerHTML = `
         <h3 class="font-semibold mb-3 text-sm sm:text-base">Seuils de Triage</h3>
         <div class="grid grid-cols-3 gap-3">
-          <div>
-            <label class="text-xs">Vert max</label>
-            <input type="number" id="threshold0" value="${activeConfig.thresholds[0]}" class="w-full border rounded px-2 py-1 text-sm">
-          </div>
-          <div>
-            <label class="text-xs">Jaune max</label>
-            <input type="number" id="threshold1" value="${activeConfig.thresholds[1]}" class="w-full border rounded px-2 py-1 text-sm">
-          </div>
-          <div>
-            <label class="text-xs">Orange max</label>
-            <input type="number" id="threshold2" value="${activeConfig.thresholds[2]}" class="w-full border rounded px-2 py-1 text-sm">
-          </div>
+          <div><label class="text-xs">Vert max</label><input type="number" id="threshold0" value="${activeConfig.thresholds[0]}" class="w-full border rounded px-2 py-1 text-sm"></div>
+          <div><label class="text-xs">Jaune max</label><input type="number" id="threshold1" value="${activeConfig.thresholds[1]}" class="w-full border rounded px-2 py-1 text-sm"></div>
+          <div><label class="text-xs">Orange max</label><input type="number" id="threshold2" value="${activeConfig.thresholds[2]}" class="w-full border rounded px-2 py-1 text-sm"></div>
         </div>
       `;
       editor.appendChild(thDiv);
@@ -351,39 +370,26 @@
         <h3 class="font-semibold mb-3 text-sm sm:text-base">Couleurs & Niveaux</h3>
         <div class="grid grid-cols-2 gap-2">
           ${[0,1,2,3].map(i => `
-            <div>
-              <label class="text-xs">Couleur</label>
-              <input type="text" id="color${i}" value="${activeConfig.colors[i]}" class="w-full border rounded px-2 py-1 text-sm">
-            </div>
-            <div>
-              <label class="text-xs">Niveau</label>
-              <input type="text" id="level${i}" value="${activeConfig.levels[i]}" class="w-full border rounded px-2 py-1 text-sm">
-            </div>
+            <div><label class="text-xs">Couleur</label><input type="text" id="color${i}" value="${activeConfig.colors[i]}" class="w-full border rounded px-2 py-1 text-sm"></div>
+            <div><label class="text-xs">Niveau</label><input type="text" id="level${i}" value="${activeConfig.levels[i]}" class="w-full border rounded px-2 py-1 text-sm"></div>
           `).join('')}
         </div>
       `;
       editor.appendChild(clDiv);
 
-      // ─── Attach event listeners ───
-      // All input changes
+      // Attach change listeners
       editor.querySelectorAll('input').forEach(inp => {
         inp.addEventListener('change', () => {
           const cat = inp.dataset.cat, idx = +inp.dataset.idx, field = inp.dataset.field;
-          if (cat && field === 'option') {
-            activeConfig[cat].options[idx] = inp.value;
-          } else if (cat && field === 'score') {
-            activeConfig[cat].scores[idx] = +inp.value || 0;
-          } else if (inp.id.startsWith('threshold')) {
-            activeConfig.thresholds[+inp.id.replace('threshold','')] = +inp.value || 0;
-          } else if (inp.id.startsWith('color')) {
-            activeConfig.colors[+inp.id.replace('color','')] = inp.value;
-          } else if (inp.id.startsWith('level')) {
-            activeConfig.levels[+inp.id.replace('level','')] = inp.value;
-          }
+          if (cat && field === 'option') activeConfig[cat].options[idx] = inp.value;
+          else if (cat && field === 'score') activeConfig[cat].scores[idx] = +inp.value || 0;
+          else if (inp.id.startsWith('threshold')) activeConfig.thresholds[+inp.id.replace('threshold','')] = +inp.value || 0;
+          else if (inp.id.startsWith('color')) activeConfig.colors[+inp.id.replace('color','')] = inp.value;
+          else if (inp.id.startsWith('level')) activeConfig.levels[+inp.id.replace('level','')] = inp.value;
         });
       });
 
-      // Delete option buttons (using event delegation on the editor)
+      // Delete option buttons
       editor.querySelectorAll('.delete-option-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
           e.preventDefault();
@@ -392,13 +398,12 @@
           if (confirm(`⚠️ Supprimer l'option "${activeConfig[key].options[idx]}" ?`)) {
             activeConfig[key].options.splice(idx, 1);
             activeConfig[key].scores.splice(idx, 1);
-            showEditor(); // re-render
+            showEditor();
           }
         });
       });
     }
 
-    // ─── ADD NEW CATEGORY ───
     function addNewCategory() {
       const name = prompt('Nom de la nouvelle catégorie (ex: "saturation") :');
       if (!name) return;
@@ -410,7 +415,6 @@
       showEditor();
     }
 
-    // ─── SAVE PROPOSAL ───
     async function saveProposal() {
       if (!doctorCode) return alert('Connectez-vous en tant que médecin.');
       const name = prompt('Nom de la configuration :');
@@ -495,7 +499,7 @@
       document.getElementById('ticketsContainer').innerHTML = '';
     }
 
-    // ─── ADMIN PROPOSALS LIST (with activate/deactivate) ───
+    // ─── ADMIN PROPOSALS LIST ───
     async function loadProposalsList() {
       if (!adminCode) return;
       const res = await fetch(API_BASE + '/config/list', { headers: {'X-Admin-Code': adminCode} });
@@ -514,10 +518,7 @@
           <div>
             <p class="font-semibold text-sm">${c.name}</p>
             <p class="text-xs text-gray-600">${c.description || ''}</p>
-            <p class="text-xs text-gray-500 mt-1">
-              Statut : <span class="font-medium">${c.status}</span>
-              ${c.doctor_code ? ` | Médecin: ${c.doctor_code}` : ''}
-            </p>
+            <p class="text-xs text-gray-500 mt-1">Statut : <span class="font-medium">${c.status}</span> ${c.doctor_code ? '| Médecin: '+c.doctor_code : ''}</p>
           </div>
           <div class="flex gap-2 self-end sm:self-auto mt-2 sm:mt-0">
             ${c.status !== 'active' ? 
@@ -533,14 +534,14 @@
     window.activateConfig = async (id) => {
       if (!adminCode || !confirm('Activer cette configuration ?')) return;
       const res = await fetch(API_BASE + '/config/activate', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Code': adminCode },
+        method: 'PUT', headers: {'Content-Type':'application/json','X-Admin-Code': adminCode},
         body: JSON.stringify({ id })
       });
       if (res.ok) {
         alert('✅ Configuration activée.');
         loadProposalsList();
         loadAllConfigs();
+        renderSimulator(); // refresh inputs because category union may have changed
       } else {
         const err = await res.json();
         alert('❌ ' + err.error);
@@ -550,14 +551,14 @@
     window.deactivateConfig = async (id) => {
       if (!adminCode || !confirm('Désactiver cette configuration ?')) return;
       const res = await fetch(API_BASE + '/config/deactivate', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Code': adminCode },
+        method: 'PUT', headers: {'Content-Type':'application/json','X-Admin-Code': adminCode},
         body: JSON.stringify({ id })
       });
       if (res.ok) {
         alert('✅ Configuration désactivée.');
         loadProposalsList();
         loadAllConfigs();
+        renderSimulator();
       } else {
         const err = await res.json();
         alert('❌ ' + err.error);
